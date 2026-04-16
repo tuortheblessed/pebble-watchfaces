@@ -1,0 +1,80 @@
+{
+  "name": "green-dragon-tavern",
+  "author": "Green Dragon Tavern",
+  "version": "1.0.0",
+  "keywords": ["pebble-app"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Green Dragon Tavern",
+    "uuid": "94bcbe1a-207e-4209-bbe5-5ade0776ba38",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": ["emery"],
+    "watchapp": { "watchface": true },
+    "resources": {
+      "media": [
+        {
+          "type": "png",
+          "name": "DRAGON_SIGN_IMAGE",
+          "file": "images/dragon_sign.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_0",
+          "file": "images/digit_0.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_1",
+          "file": "images/digit_1.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_2",
+          "file": "images/digit_2.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_3",
+          "file": "images/digit_3.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_4",
+          "file": "images/digit_4.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_5",
+          "file": "images/digit_5.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_6",
+          "file": "images/digit_6.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_7",
+          "file": "images/digit_7.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_8",
+          "file": "images/digit_8.png"
+        },
+        {
+          "type": "png",
+          "name": "DIGIT_9",
+          "file": "images/digit_9.png"
+        },
+        {
+          "type": "png",
+          "name": "COLON_IMAGE",
+          "file": "images/colon.png"
+        }
+      ]
+    }
+  }
+}
