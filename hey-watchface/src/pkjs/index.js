@@ -633,7 +633,9 @@ function pickHabits(catalog, todayPayload, queryDate) {
   var scheduled = scheduledHabitsFromList(catalog, queryDate);
   var doneMap = habitCompletionMap(todayPayload, queryDate);
   var slots = getHabitSlotNames();
+  var hasPinnedSlots = false;
   var picked = [];
+  var slotHabits = [null, null, null, null];
   var usedIds = {};
   var icons = [];
   var colors = [];
@@ -644,34 +646,59 @@ function pickHabits(catalog, todayPayload, queryDate) {
   var i;
   var habit;
 
-  for (s = 0; s < slots.length && picked.length < MAX_HABITS; s++) {
-    if (!normalizeHabitName(slots[s])) {
-      continue;
+  for (s = 0; s < slots.length; s++) {
+    if (normalizeHabitName(slots[s])) {
+      hasPinnedSlots = true;
+      break;
     }
-    for (h = 0; h < scheduled.length; h++) {
-      habit = scheduled[h];
+  }
+
+  if (hasPinnedSlots) {
+    for (s = 0; s < MAX_HABITS; s++) {
+      if (!normalizeHabitName(slots[s])) {
+        continue;
+      }
+      for (h = 0; h < scheduled.length; h++) {
+        habit = scheduled[h];
+        if (usedIds[habit.id]) {
+          continue;
+        }
+        if (habitMatchesSlot(habit, slots[s])) {
+          slotHabits[s] = habit;
+          usedIds[habit.id] = true;
+          break;
+        }
+      }
+    }
+
+    for (i = 0; i < scheduled.length; i++) {
+      habit = scheduled[i];
       if (usedIds[habit.id]) {
         continue;
       }
-      if (habitMatchesSlot(habit, slots[s])) {
-        picked.push(habit);
-        usedIds[habit.id] = true;
-        break;
+      for (s = 0; s < MAX_HABITS; s++) {
+        if (!slotHabits[s]) {
+          slotHabits[s] = habit;
+          usedIds[habit.id] = true;
+          break;
+        }
       }
     }
+
+    picked = slotHabits;
+  } else {
+    for (i = 0; i < scheduled.length && picked.length < MAX_HABITS; i++) {
+      picked.push(scheduled[i]);
+    }
   }
 
-  for (i = 0; i < scheduled.length && picked.length < MAX_HABITS; i++) {
-    habit = scheduled[i];
-    if (usedIds[habit.id]) {
+  for (i = 0; i < MAX_HABITS; i++) {
+    habit = hasPinnedSlots ? picked[i] : (i < picked.length ? picked[i] : null);
+    if (!habit) {
+      icons.push('');
+      colors.push('');
       continue;
     }
-    picked.push(habit);
-    usedIds[habit.id] = true;
-  }
-
-  for (i = 0; i < picked.length; i++) {
-    habit = picked[i];
     icons.push(habitIconSlug(habit));
     colors.push(habit.color || 'blue');
     titles.push((habit.title || '?') + (doneMap[habit.id] ? '\u2713' : ''));
@@ -681,7 +708,7 @@ function pickHabits(catalog, todayPayload, queryDate) {
   }
 
   return {
-    count: icons.length,
+    count: hasPinnedSlots ? MAX_HABITS : picked.length,
     icons: icons.join('|'),
     colors: colors.join('|'),
     mask: mask,

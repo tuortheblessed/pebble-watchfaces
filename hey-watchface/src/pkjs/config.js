@@ -114,7 +114,7 @@ module.exports = [
   },
   {
     "type": "text",
-    "defaultValue": "Optional: pin habits by their exact Hey name to a corner of the watchface (top-left, top-right, bottom-left, bottom-right). Leave blank to show today's habits automatically."
+    "defaultValue": "Optional: pin habits by name to a corner (top-left, top-right, bottom-left, bottom-right). Names are case-insensitive and can be partial matches. Habit must be scheduled today. Leave all blank to auto-fill."
   },
   {
     "type": "input",

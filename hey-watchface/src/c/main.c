@@ -346,7 +346,10 @@ static void draw_habit_glyph(GContext *ctx, int slot, GPoint center, bool done,
 }
 
 static void draw_habits(GContext *ctx) {
-  for (int i = 0; i < s_habit_count && i < MAX_HABITS; i++) {
+  for (int i = 0; i < MAX_HABITS; i++) {
+    if (s_habit_icons[i][0] == '\0') {
+      continue;
+    }
     bool done = (s_habit_done_mask & (1 << i)) != 0;
     GColor color = hey_color_fill(s_habit_colors[i]);
     draw_habit_glyph(ctx, i, habit_chip_center(i), done, color, s_habit_icons[i]);
@@ -525,7 +528,7 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
         s_habit_icons[i][0] = '\0';
         s_habit_colors[i][0] = '\0';
       }
-      for (int i = 0; i < count && i < MAX_HABITS; i++) {
+      for (int i = 0; i < MAX_HABITS; i++) {
         parse_pipe_field(s_habit_icons[i], ICON_SLUG_LEN, icons, i);
         parse_pipe_field(s_habit_colors[i], COLOR_SLUG_LEN, colors, i);
       }
