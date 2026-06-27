@@ -33,6 +33,10 @@ Hey habits on your wrist
 
 ## Version History
 
+### v1.0.5
+- Fix: dark mode, footer mode, and timeline toggle now read/write Clay clay-settings correctly
+- Fix: AppearanceMode was never persisted when saving settings
+
 ### v1.0.4
 - Fix: Disconnect toggle now works (Clay sends 1/0, not true/false)
 - Fix: clear tokens from Clay's clay-settings blob, not just loose localStorage keys

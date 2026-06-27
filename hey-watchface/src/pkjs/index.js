@@ -34,6 +34,63 @@ function writeClaySettings(claySettings) {
   localStorage.setItem('clay-settings', JSON.stringify(claySettings));
 }
 
+function clayValue(value) {
+  if (value && typeof value === 'object' && value.value !== undefined) {
+    return value.value;
+  }
+  return value;
+}
+
+function readClaySetting(key, defaultValue) {
+  var claySettings = readClaySettings();
+  if (claySettings[key] !== undefined && claySettings[key] !== null && claySettings[key] !== '') {
+    return clayValue(claySettings[key]);
+  }
+  var stored = localStorage.getItem(key);
+  if (stored !== null && stored !== '' && stored !== 'undefined' && stored !== 'null') {
+    return stored;
+  }
+  return defaultValue;
+}
+
+function persistPreferenceSettings(config) {
+  var claySettings = readClaySettings();
+
+  if (config.AppearanceMode !== undefined) {
+    var appearance = clayValue(config.AppearanceMode) || 'light';
+    claySettings.AppearanceMode = appearance;
+    localStorage.setItem('AppearanceMode', appearance);
+  }
+  if (config.FooterContent !== undefined) {
+    var footer = clayValue(config.FooterContent) || 'todos';
+    claySettings.FooterContent = footer;
+    localStorage.setItem('FooterContent', footer);
+  }
+  if (config.SyncTimeline !== undefined) {
+    var timeline = isSettingEnabled(config.SyncTimeline);
+    claySettings.SyncTimeline = timeline;
+    localStorage.setItem('SyncTimeline', timeline ? 'true' : 'false');
+  }
+  if (config.HabitSlot1 !== undefined) {
+    claySettings.HabitSlot1 = config.HabitSlot1 || '';
+    localStorage.setItem('HabitSlot1', claySettings.HabitSlot1);
+  }
+  if (config.HabitSlot2 !== undefined) {
+    claySettings.HabitSlot2 = config.HabitSlot2 || '';
+    localStorage.setItem('HabitSlot2', claySettings.HabitSlot2);
+  }
+  if (config.HabitSlot3 !== undefined) {
+    claySettings.HabitSlot3 = config.HabitSlot3 || '';
+    localStorage.setItem('HabitSlot3', claySettings.HabitSlot3);
+  }
+  if (config.HabitSlot4 !== undefined) {
+    claySettings.HabitSlot4 = config.HabitSlot4 || '';
+    localStorage.setItem('HabitSlot4', claySettings.HabitSlot4);
+  }
+
+  writeClaySettings(claySettings);
+}
+
 function syncAuthStorage(access, refresh, endpoint) {
   access = normalizeToken(access || '');
   refresh = normalizeToken(refresh || '');
@@ -266,10 +323,7 @@ function addDaysString(dateString, days) {
 }
 
 function footerContentMode() {
-  var mode = localStorage.getItem('FooterContent');
-  if (!mode || mode === 'undefined' || mode === 'null') {
-    return 'todos';
-  }
+  var mode = readClaySetting('FooterContent', 'todos');
   if (mode !== 'todos' && mode !== 'event' && mode !== 'off') {
     return 'todos';
   }
@@ -277,7 +331,7 @@ function footerContentMode() {
 }
 
 function syncTimelineEnabled() {
-  return localStorage.getItem('SyncTimeline') === 'true';
+  return isSettingEnabled(readClaySetting('SyncTimeline', false));
 }
 
 function isSameDayAs(isoString, dateString) {
@@ -431,10 +485,10 @@ function habitMatchesSlot(habit, slotName) {
 
 function getHabitSlotNames() {
   return [
-    localStorage.getItem('HabitSlot1') || '',
-    localStorage.getItem('HabitSlot2') || '',
-    localStorage.getItem('HabitSlot3') || '',
-    localStorage.getItem('HabitSlot4') || ''
+    readClaySetting('HabitSlot1', ''),
+    readClaySetting('HabitSlot2', ''),
+    readClaySetting('HabitSlot3', ''),
+    readClaySetting('HabitSlot4', '')
   ];
 }
 
@@ -818,8 +872,7 @@ function pickTodo(recordingsPayload) {
 }
 
 function themeModeByte() {
-  var mode = localStorage.getItem('AppearanceMode') || 'light';
-  return mode === 'dark' ? 1 : 0;
+  return readClaySetting('AppearanceMode', 'light') === 'dark' ? 1 : 0;
 }
 
 function getStoredTimelinePinIds() {
@@ -1153,26 +1206,11 @@ Pebble.addEventListener('webviewclosed', function(e) {
     return;
   }
   saveHeyTokenSettings(config);
-  if (config.HabitSlot1 !== undefined) {
-    localStorage.setItem('HabitSlot1', config.HabitSlot1 || '');
-  }
-  if (config.HabitSlot2 !== undefined) {
-    localStorage.setItem('HabitSlot2', config.HabitSlot2 || '');
-  }
-  if (config.HabitSlot3 !== undefined) {
-    localStorage.setItem('HabitSlot3', config.HabitSlot3 || '');
-  }
-  if (config.HabitSlot4 !== undefined) {
-    localStorage.setItem('HabitSlot4', config.HabitSlot4 || '');
-  }
-  if (config.FooterContent !== undefined) {
-    localStorage.setItem('FooterContent', config.FooterContent || 'todos');
-  }
+  var wasTimelineEnabled = syncTimelineEnabled();
+  persistPreferenceSettings(config);
   if (config.SyncTimeline !== undefined) {
     var enableTimeline = isSettingEnabled(config.SyncTimeline);
-    var wasEnabled = syncTimelineEnabled();
-    localStorage.setItem('SyncTimeline', enableTimeline ? 'true' : 'false');
-    if (wasEnabled && !enableTimeline) {
+    if (wasTimelineEnabled && !enableTimeline) {
       clearAllTimelinePins(function() {
         fetchHeyData();
       });
