@@ -33,6 +33,9 @@ Hey habits on your wrist
 
 ## Version History
 
+### v1.0.3
+- Settings: computer setup steps shown on separate lines for readability
+
 ### v1.0.2
 - Fix: changing access token no longer silently re-authenticates via saved refresh token
 - Add "Disconnect Hey account" toggle in settings

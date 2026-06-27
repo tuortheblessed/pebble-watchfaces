@@ -9,7 +9,23 @@ module.exports = [
   },
   {
     "type": "text",
-    "defaultValue": "On your computer:\n1. Open Terminal (Mac) or PowerShell (Windows)\n2. Install hey-cli (see github.com/basecamp/hey-cli)\n3. Run: hey auth login\n   Sign in to Hey when the browser opens\n4. Run: hey auth token\n   Copy the long code it prints"
+    "defaultValue": "On your computer:"
+  },
+  {
+    "type": "text",
+    "defaultValue": "1. Open Terminal (Mac) or PowerShell (Windows)"
+  },
+  {
+    "type": "text",
+    "defaultValue": "2. Install hey-cli (see github.com/basecamp/hey-cli)"
+  },
+  {
+    "type": "text",
+    "defaultValue": "3. Run: hey auth login — sign in to Hey when the browser opens"
+  },
+  {
+    "type": "text",
+    "defaultValue": "4. Run: hey auth token — copy the long code it prints"
   },
   {
     "type": "text",
