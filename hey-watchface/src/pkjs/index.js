@@ -7,14 +7,77 @@ var TIMELINE_API_BASE = 'https://timeline-api.getpebble.com/v1/user/pins/';
 var MAX_HABITS = 4;
 var MAX_TIMELINE_PINS = 30;
 var TIMELINE_PIN_IDS_KEY = 'HeyTimelinePinIds';
+var HABIT_CATALOG_KEY = 'HeyHabitCatalog';
 var TODO_FOOTER_TEXT_MAX = 80;
 var todoRotateIndex = 0;
+var s_fetchId = 0;
 
 var settings = {
   accessToken: '',
   refreshToken: '',
   tokenEndpoint: ''
 };
+
+function isSettingEnabled(value) {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function readClaySettings() {
+  try {
+    return JSON.parse(localStorage.getItem('clay-settings') || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeClaySettings(claySettings) {
+  localStorage.setItem('clay-settings', JSON.stringify(claySettings));
+}
+
+function syncAuthStorage(access, refresh, endpoint) {
+  access = normalizeToken(access || '');
+  refresh = normalizeToken(refresh || '');
+  endpoint = (endpoint || '').trim();
+
+  if (access) {
+    localStorage.setItem('HeyAccessToken', access);
+  } else {
+    localStorage.removeItem('HeyAccessToken');
+  }
+  if (refresh) {
+    localStorage.setItem('HeyRefreshToken', refresh);
+  } else {
+    localStorage.removeItem('HeyRefreshToken');
+  }
+  if (endpoint) {
+    localStorage.setItem('HeyTokenEndpoint', endpoint);
+  } else {
+    localStorage.removeItem('HeyTokenEndpoint');
+  }
+
+  var claySettings = readClaySettings();
+  if (access) {
+    claySettings.HeyAccessToken = access;
+  } else {
+    delete claySettings.HeyAccessToken;
+  }
+  if (refresh) {
+    claySettings.HeyRefreshToken = refresh;
+  } else {
+    delete claySettings.HeyRefreshToken;
+  }
+  if (endpoint) {
+    claySettings.HeyTokenEndpoint = endpoint;
+  } else {
+    delete claySettings.HeyTokenEndpoint;
+  }
+  claySettings.DisconnectHey = false;
+  writeClaySettings(claySettings);
+
+  settings.accessToken = access;
+  settings.refreshToken = refresh;
+  settings.tokenEndpoint = endpoint;
+}
 
 function xhrRequest(url, method, headers, body, callback) {
   var xhr = new XMLHttpRequest();
@@ -57,65 +120,71 @@ function normalizeToken(token) {
 }
 
 function saveSettings() {
-  settings.accessToken = normalizeToken(localStorage.getItem('HeyAccessToken') || '');
-  settings.refreshToken = normalizeToken(localStorage.getItem('HeyRefreshToken') || '');
-  settings.tokenEndpoint = (localStorage.getItem('HeyTokenEndpoint') || '').trim();
+  var claySettings = readClaySettings();
+  settings.accessToken = normalizeToken(
+    claySettings.HeyAccessToken || localStorage.getItem('HeyAccessToken') || ''
+  );
+  settings.refreshToken = normalizeToken(
+    claySettings.HeyRefreshToken || localStorage.getItem('HeyRefreshToken') || ''
+  );
+  settings.tokenEndpoint = (
+    claySettings.HeyTokenEndpoint || localStorage.getItem('HeyTokenEndpoint') || ''
+  ).trim();
 }
 
 function clearHeyCredentials() {
+  s_fetchId += 1;
   localStorage.removeItem('HeyAccessToken');
   localStorage.removeItem('HeyRefreshToken');
   localStorage.removeItem('HeyTokenEndpoint');
   localStorage.removeItem(HABIT_CATALOG_KEY);
   localStorage.removeItem(TIMELINE_PIN_IDS_KEY);
+
+  var claySettings = readClaySettings();
+  delete claySettings.HeyAccessToken;
+  delete claySettings.HeyRefreshToken;
+  delete claySettings.HeyTokenEndpoint;
+  claySettings.DisconnectHey = false;
+  writeClaySettings(claySettings);
+
   settings.accessToken = '';
   settings.refreshToken = '';
   settings.tokenEndpoint = '';
 }
 
 function saveHeyTokenSettings(config) {
-  var previousAccess = normalizeToken(localStorage.getItem('HeyAccessToken') || '');
+  var claySettings = readClaySettings();
+  var previousAccess = normalizeToken(
+    claySettings.HeyAccessToken || localStorage.getItem('HeyAccessToken') || ''
+  );
   var accessProvided = config.HeyAccessToken !== undefined;
   var newAccess = accessProvided
     ? normalizeToken(config.HeyAccessToken || '')
     : previousAccess;
 
-  if (accessProvided) {
-    localStorage.setItem('HeyAccessToken', newAccess);
-  }
-
   if (!newAccess) {
-    localStorage.removeItem('HeyRefreshToken');
-    localStorage.removeItem('HeyTokenEndpoint');
+    syncAuthStorage('', '', '');
     return;
   }
 
   if (accessProvided && newAccess !== previousAccess) {
-    // Changing access token invalidates saved refresh credentials.
-    localStorage.removeItem('HeyRefreshToken');
-    localStorage.removeItem('HeyTokenEndpoint');
+    // New access token invalidates any saved refresh credentials.
+    syncAuthStorage(newAccess, '', '');
     return;
   }
 
-  if (config.HeyRefreshToken !== undefined) {
-    var refresh = normalizeToken(config.HeyRefreshToken || '');
-    if (refresh) {
-      localStorage.setItem('HeyRefreshToken', refresh);
-    } else {
-      localStorage.removeItem('HeyRefreshToken');
-    }
-  }
-  if (config.HeyTokenEndpoint !== undefined) {
-    var endpoint = (config.HeyTokenEndpoint || '').trim();
-    if (endpoint) {
-      localStorage.setItem('HeyTokenEndpoint', endpoint);
-    } else {
-      localStorage.removeItem('HeyTokenEndpoint');
-    }
-  }
+  var refresh = config.HeyRefreshToken !== undefined
+    ? normalizeToken(config.HeyRefreshToken || '')
+    : normalizeToken(
+      claySettings.HeyRefreshToken || localStorage.getItem('HeyRefreshToken') || ''
+    );
+  var endpoint = config.HeyTokenEndpoint !== undefined
+    ? (config.HeyTokenEndpoint || '').trim()
+    : (claySettings.HeyTokenEndpoint || localStorage.getItem('HeyTokenEndpoint') || '').trim();
+  syncAuthStorage(newAccess, refresh, endpoint);
 }
 
-function refreshAccessToken(callback) {
+function refreshAccessToken(fetchId, callback) {
   if (!settings.refreshToken || !settings.tokenEndpoint) {
     callback(new Error('no refresh credentials'));
     return;
@@ -133,12 +202,11 @@ function refreshAccessToken(callback) {
     try {
       var json = JSON.parse(responseText);
       if (json.access_token) {
-        settings.accessToken = json.access_token;
-        localStorage.setItem('HeyAccessToken', json.access_token);
-        if (json.refresh_token) {
-          settings.refreshToken = json.refresh_token;
-          localStorage.setItem('HeyRefreshToken', json.refresh_token);
+        if (fetchId !== s_fetchId) {
+          callback(new Error('stale fetch'));
+          return;
         }
+        syncAuthStorage(json.access_token, json.refresh_token || settings.refreshToken, settings.tokenEndpoint);
         callback(null);
         return;
       }
@@ -150,15 +218,26 @@ function refreshAccessToken(callback) {
   });
 }
 
-function apiGet(path, callback) {
+function apiGet(path, fetchId, callback) {
   xhrRequest(HEY_BASE_URL + path, 'GET', authHeaders(), null, function(err, status, responseText) {
-    if (status === 401 && settings.refreshToken) {
-      refreshAccessToken(function(refreshErr) {
+    if (fetchId !== s_fetchId) {
+      return;
+    }
+    if (status === 401 && settings.refreshToken && settings.tokenEndpoint) {
+      refreshAccessToken(fetchId, function(refreshErr) {
+        if (fetchId !== s_fetchId) {
+          return;
+        }
         if (refreshErr) {
           callback(refreshErr, status, responseText);
           return;
         }
-        xhrRequest(HEY_BASE_URL + path, 'GET', authHeaders(), null, callback);
+        xhrRequest(HEY_BASE_URL + path, 'GET', authHeaders(), null, function(err2, status2, text2) {
+          if (fetchId !== s_fetchId) {
+            return;
+          }
+          callback(err2, status2, text2);
+        });
       });
       return;
     }
@@ -358,8 +437,6 @@ function getHabitSlotNames() {
     localStorage.getItem('HabitSlot4') || ''
   ];
 }
-
-var HABIT_CATALOG_KEY = 'HeyHabitCatalog';
 
 function habitDetailScore(habit) {
   if (!habit) {
@@ -934,11 +1011,28 @@ function sendError(status, reason) {
 }
 
 function fetchHeyData(queryDate) {
+  s_fetchId += 1;
+  var fetchId = s_fetchId;
+
+  function sendWatchPayload(payload) {
+    if (fetchId !== s_fetchId) {
+      return;
+    }
+    sendToWatch(payload);
+  }
+
+  function reportError(status, reason) {
+    if (fetchId !== s_fetchId) {
+      return;
+    }
+    sendError(status, reason);
+  }
+
   saveSettings();
   var date = queryDate || todayString();
 
   if (!settings.accessToken) {
-    sendToWatch({
+    sendWatchPayload({
       'HABIT_COUNT': 0,
       'HABIT_DONE_MASK': 0,
       'HABIT_ICONS': '',
@@ -950,9 +1044,12 @@ function fetchHeyData(queryDate) {
     return;
   }
 
-  apiGet('/calendars.json', function(err, status, responseText) {
+  apiGet('/calendars.json', fetchId, function(err, status, responseText) {
+    if (fetchId !== s_fetchId) {
+      return;
+    }
     if (err || status < 200 || status >= 300) {
-      sendError(status === 401 ? 1 : 2, 'calendars HTTP ' + status);
+      reportError(status === 401 ? 1 : 2, 'calendars HTTP ' + status);
       return;
     }
 
@@ -960,13 +1057,13 @@ function fetchHeyData(queryDate) {
     try {
       calendarsPayload = JSON.parse(responseText);
     } catch (e) {
-      sendError(2, 'calendars JSON parse');
+      reportError(2, 'calendars JSON parse');
       return;
     }
 
     var calendarId = findPersonalCalendarId(calendarsPayload);
     if (!calendarId) {
-      sendError(2, 'personal calendar not found');
+      reportError(2, 'personal calendar not found');
       return;
     }
 
@@ -975,9 +1072,12 @@ function fetchHeyData(queryDate) {
     var weekPath = '/calendars/' + calendarId + '/recordings.json?starts_on=' +
       date + '&ends_on=' + addDaysString(date, 6);
 
-    apiGet(todayPath, function(err2, status2, todayText) {
+    apiGet(todayPath, fetchId, function(err2, status2, todayText) {
+      if (fetchId !== s_fetchId) {
+        return;
+      }
       if (err2 || status2 < 200 || status2 >= 300) {
-        sendError(status2 === 401 ? 1 : 2, 'recordings HTTP ' + status2);
+        reportError(status2 === 401 ? 1 : 2, 'recordings HTTP ' + status2);
         return;
       }
 
@@ -985,11 +1085,14 @@ function fetchHeyData(queryDate) {
       try {
         todayPayload = JSON.parse(todayText);
       } catch (e2) {
-        sendError(2, 'recordings JSON parse');
+        reportError(2, 'recordings JSON parse');
         return;
       }
 
-      apiGet(weekPath, function(err3, status3, weekText) {
+      apiGet(weekPath, fetchId, function(err3, status3, weekText) {
+        if (fetchId !== s_fetchId) {
+          return;
+        }
         var weekPayload = todayPayload;
         if (!err3 && status3 >= 200 && status3 < 300) {
           try {
@@ -1012,7 +1115,7 @@ function fetchHeyData(queryDate) {
           todoCount + ' todos, footer=' + footer.text + ', mode=' +
           footerContentMode());
 
-        sendToWatch({
+        sendWatchPayload({
           'HABIT_COUNT': habits.count,
           'HABIT_DONE_MASK': habits.mask,
           'HABIT_ICONS': habits.icons,
@@ -1044,7 +1147,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
     return;
   }
   var config = JSON.parse(decodeURIComponent(e.response));
-  if (config.DisconnectHey === true || config.DisconnectHey === 'true') {
+  if (isSettingEnabled(config.DisconnectHey)) {
     clearHeyCredentials();
     fetchHeyData();
     return;
@@ -1066,7 +1169,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
     localStorage.setItem('FooterContent', config.FooterContent || 'todos');
   }
   if (config.SyncTimeline !== undefined) {
-    var enableTimeline = config.SyncTimeline === true || config.SyncTimeline === 'true';
+    var enableTimeline = isSettingEnabled(config.SyncTimeline);
     var wasEnabled = syncTimelineEnabled();
     localStorage.setItem('SyncTimeline', enableTimeline ? 'true' : 'false');
     if (wasEnabled && !enableTimeline) {

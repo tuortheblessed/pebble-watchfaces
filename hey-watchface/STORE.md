@@ -33,6 +33,11 @@ Hey habits on your wrist
 
 ## Version History
 
+### v1.0.4
+- Fix: Disconnect toggle now works (Clay sends 1/0, not true/false)
+- Fix: clear tokens from Clay's clay-settings blob, not just loose localStorage keys
+- Fix: cancel in-flight syncs so stale API responses cannot restore your data
+
 ### v1.0.3
 - Settings: computer setup steps shown on separate lines for readability
 
