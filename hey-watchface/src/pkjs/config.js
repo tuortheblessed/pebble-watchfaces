@@ -50,6 +50,13 @@ module.exports = [
     }
   },
   {
+    "type": "toggle",
+    "messageKey": "DisconnectHey",
+    "label": "Disconnect Hey account",
+    "defaultValue": false,
+    "description": "Turn on and Save to clear your saved token and stop syncing."
+  },
+  {
     "type": "heading",
     "defaultValue": "Appearance"
   },

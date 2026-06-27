@@ -33,6 +33,11 @@ Hey habits on your wrist
 
 ## Version History
 
+### v1.0.2
+- Fix: changing access token no longer silently re-authenticates via saved refresh token
+- Add "Disconnect Hey account" toggle in settings
+- Empty token fields now properly clear saved credentials
+
 ### v1.0.1
 - Fix: access token no longer bundled in app package
 - Clearer settings instructions for token setup on a computer

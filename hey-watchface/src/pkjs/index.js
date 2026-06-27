@@ -62,6 +62,59 @@ function saveSettings() {
   settings.tokenEndpoint = (localStorage.getItem('HeyTokenEndpoint') || '').trim();
 }
 
+function clearHeyCredentials() {
+  localStorage.removeItem('HeyAccessToken');
+  localStorage.removeItem('HeyRefreshToken');
+  localStorage.removeItem('HeyTokenEndpoint');
+  localStorage.removeItem(HABIT_CATALOG_KEY);
+  localStorage.removeItem(TIMELINE_PIN_IDS_KEY);
+  settings.accessToken = '';
+  settings.refreshToken = '';
+  settings.tokenEndpoint = '';
+}
+
+function saveHeyTokenSettings(config) {
+  var previousAccess = normalizeToken(localStorage.getItem('HeyAccessToken') || '');
+  var accessProvided = config.HeyAccessToken !== undefined;
+  var newAccess = accessProvided
+    ? normalizeToken(config.HeyAccessToken || '')
+    : previousAccess;
+
+  if (accessProvided) {
+    localStorage.setItem('HeyAccessToken', newAccess);
+  }
+
+  if (!newAccess) {
+    localStorage.removeItem('HeyRefreshToken');
+    localStorage.removeItem('HeyTokenEndpoint');
+    return;
+  }
+
+  if (accessProvided && newAccess !== previousAccess) {
+    // Changing access token invalidates saved refresh credentials.
+    localStorage.removeItem('HeyRefreshToken');
+    localStorage.removeItem('HeyTokenEndpoint');
+    return;
+  }
+
+  if (config.HeyRefreshToken !== undefined) {
+    var refresh = normalizeToken(config.HeyRefreshToken || '');
+    if (refresh) {
+      localStorage.setItem('HeyRefreshToken', refresh);
+    } else {
+      localStorage.removeItem('HeyRefreshToken');
+    }
+  }
+  if (config.HeyTokenEndpoint !== undefined) {
+    var endpoint = (config.HeyTokenEndpoint || '').trim();
+    if (endpoint) {
+      localStorage.setItem('HeyTokenEndpoint', endpoint);
+    } else {
+      localStorage.removeItem('HeyTokenEndpoint');
+    }
+  }
+}
+
 function refreshAccessToken(callback) {
   if (!settings.refreshToken || !settings.tokenEndpoint) {
     callback(new Error('no refresh credentials'));
@@ -991,15 +1044,12 @@ Pebble.addEventListener('webviewclosed', function(e) {
     return;
   }
   var config = JSON.parse(decodeURIComponent(e.response));
-  if (config.HeyAccessToken) {
-    localStorage.setItem('HeyAccessToken', normalizeToken(config.HeyAccessToken));
+  if (config.DisconnectHey === true || config.DisconnectHey === 'true') {
+    clearHeyCredentials();
+    fetchHeyData();
+    return;
   }
-  if (config.HeyRefreshToken) {
-    localStorage.setItem('HeyRefreshToken', normalizeToken(config.HeyRefreshToken));
-  }
-  if (config.HeyTokenEndpoint) {
-    localStorage.setItem('HeyTokenEndpoint', config.HeyTokenEndpoint);
-  }
+  saveHeyTokenSettings(config);
   if (config.HabitSlot1 !== undefined) {
     localStorage.setItem('HabitSlot1', config.HabitSlot1 || '');
   }
