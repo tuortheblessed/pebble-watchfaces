@@ -60,24 +60,6 @@ function saveSettings() {
   settings.accessToken = normalizeToken(localStorage.getItem('HeyAccessToken') || '');
   settings.refreshToken = normalizeToken(localStorage.getItem('HeyRefreshToken') || '');
   settings.tokenEndpoint = (localStorage.getItem('HeyTokenEndpoint') || '').trim();
-
-  try {
-    var dev = require('./dev-settings');
-    if (dev.HeyAccessToken) {
-      settings.accessToken = normalizeToken(dev.HeyAccessToken);
-      localStorage.setItem('HeyAccessToken', settings.accessToken);
-    }
-    if (dev.HeyRefreshToken) {
-      settings.refreshToken = normalizeToken(dev.HeyRefreshToken);
-      localStorage.setItem('HeyRefreshToken', settings.refreshToken);
-    }
-    if (dev.HeyTokenEndpoint) {
-      settings.tokenEndpoint = dev.HeyTokenEndpoint.trim();
-      localStorage.setItem('HeyTokenEndpoint', settings.tokenEndpoint);
-    }
-  } catch (e) {
-    // dev-settings.js not present — normal for production
-  }
 }
 
 function refreshAccessToken(callback) {
@@ -904,11 +886,11 @@ function fetchHeyData(queryDate) {
 
   if (!settings.accessToken) {
     sendToWatch({
-      'HABIT_COUNT': 4,
-      'HABIT_DONE_MASK': 5,
-      'HABIT_ICONS': 'heart|fruit|weights|read',
-      'HABIT_COLORS': 'pink|teal|green|brown',
-      'TODO_TEXT': 'Set Hey token in settings',
+      'HABIT_COUNT': 0,
+      'HABIT_DONE_MASK': 0,
+      'HABIT_ICONS': '',
+      'HABIT_COLORS': '',
+      'TODO_TEXT': 'Add Hey token in watchface settings',
       'FOOTER_KIND': 1,
       'SYNC_STATUS': 1
     });

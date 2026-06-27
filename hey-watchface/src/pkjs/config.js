@@ -1,21 +1,33 @@
 module.exports = [
   {
     "type": "heading",
-    "defaultValue": "Hey"
+    "defaultValue": "Connect your Hey account"
   },
   {
     "type": "text",
-    "defaultValue": "1) Install hey-cli: go install github.com/basecamp/hey-cli/cmd/hey@latest\n2) hey auth login\n3) hey auth token — paste below\n\nOptional: hey auth status --json for refresh token fields."
+    "defaultValue": "You need a personal access token from Hey. This is a one-time setup on a Mac or Windows computer — not on your phone."
+  },
+  {
+    "type": "text",
+    "defaultValue": "On your computer:\n1. Open Terminal (Mac) or PowerShell (Windows)\n2. Install hey-cli (see github.com/basecamp/hey-cli)\n3. Run: hey auth login\n   Sign in to Hey when the browser opens\n4. Run: hey auth token\n   Copy the long code it prints"
+  },
+  {
+    "type": "text",
+    "defaultValue": "Paste that code into Access Token below, then tap Save. Your watch will show your Hey habits within about 30 seconds."
   },
   {
     "type": "input",
     "messageKey": "HeyAccessToken",
-    "label": "Access Token",
+    "label": "Access Token (required)",
     "defaultValue": "",
     "attributes": {
-      "placeholder": "Paste token from hey auth token",
+      "placeholder": "Paste the code from: hey auth token",
       "limit": 512
     }
+  },
+  {
+    "type": "text",
+    "defaultValue": "Optional — keeps sync working when the token expires. On your computer run: hey auth status --json and copy refresh_token and token_endpoint below."
   },
   {
     "type": "input",
@@ -23,7 +35,7 @@ module.exports = [
     "label": "Refresh Token (optional)",
     "defaultValue": "",
     "attributes": {
-      "placeholder": "For auto-refresh",
+      "placeholder": "From hey auth status --json",
       "limit": 512
     }
   },
@@ -38,9 +50,13 @@ module.exports = [
     }
   },
   {
+    "type": "heading",
+    "defaultValue": "Appearance"
+  },
+  {
     "type": "select",
     "messageKey": "AppearanceMode",
-    "label": "Appearance",
+    "label": "Theme",
     "defaultValue": "light",
     "options": [
       { "label": "Light", "value": "light" },
@@ -75,7 +91,7 @@ module.exports = [
   },
   {
     "type": "text",
-    "defaultValue": "Pin habits by name (only habits scheduled for today are shown). Slots: top-left, top-right, bottom-left, bottom-right. Leave blank to auto-fill."
+    "defaultValue": "Optional: pin habits by their exact Hey name to a corner of the watchface (top-left, top-right, bottom-left, bottom-right). Leave blank to show today's habits automatically."
   },
   {
     "type": "input",
@@ -83,7 +99,7 @@ module.exports = [
     "label": "Slot 1 (top-left)",
     "defaultValue": "",
     "attributes": {
-      "placeholder": "e.g. Love",
+      "placeholder": "Exact habit name in Hey",
       "limit": 48
     }
   },
@@ -93,7 +109,7 @@ module.exports = [
     "label": "Slot 2 (top-right)",
     "defaultValue": "",
     "attributes": {
-      "placeholder": "e.g. Kettlebells",
+      "placeholder": "Exact habit name in Hey",
       "limit": 48
     }
   },
@@ -103,7 +119,7 @@ module.exports = [
     "label": "Slot 3 (bottom-left)",
     "defaultValue": "",
     "attributes": {
-      "placeholder": "e.g. Bible",
+      "placeholder": "Exact habit name in Hey",
       "limit": 48
     }
   },
@@ -113,7 +129,7 @@ module.exports = [
     "label": "Slot 4 (bottom-right)",
     "defaultValue": "",
     "attributes": {
-      "placeholder": "e.g. Help Kids",
+      "placeholder": "Exact habit name in Hey",
       "limit": 48
     }
   },

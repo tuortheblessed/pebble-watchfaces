@@ -33,6 +33,11 @@ Hey habits on your wrist
 
 ## Version History
 
+### v1.0.1
+- Fix: access token no longer bundled in app package
+- Clearer settings instructions for token setup on a computer
+- Empty habit grid until user saves their own token
+
 ### v1.0.0
 - Initial release
 - Hey habit sync with persistent catalog (completed habits stay visible)
@@ -45,7 +50,7 @@ Report issues in the repository where you obtained this watchface.
 
 ## Screenshots
 
-1. `screenshot_emery.png` — Light theme with habit grid and todo footer
+1. `emery_screenshot.png` — Light theme with habit grid and todo footer
 
 ## App Information
 - **Author**: Kyle Dellis

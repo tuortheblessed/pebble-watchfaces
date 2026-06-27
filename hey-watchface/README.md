@@ -8,7 +8,21 @@ Complete habits in the Hey app on your phone — this watchface is read-only and
 
 ---
 
-## Quick start
+## Quick start (watch users)
+
+After installing from the Pebble app store:
+
+1. On a **Mac or Windows computer**, open **Terminal** (Mac) or **PowerShell** (Windows).
+2. Install [hey-cli](https://github.com/basecamp/hey-cli) and run `hey auth login` (sign in to Hey in the browser).
+3. Run `hey auth token` and **copy the long code** it prints.
+4. On your **phone**, open this watchface's **Settings** (long-press the watchface → Settings).
+5. Paste the code into **Access Token**, tap **Save**.
+
+Your habits appear on the watch within ~30 seconds. Complete habits in the Hey app on your phone — this watchface only displays them.
+
+---
+
+## Developer setup
 
 ### 1. Install hey-cli and log in
 
@@ -24,7 +38,7 @@ hey auth login
 hey auth token
 ```
 
-Copy the printed token (a long string). You will paste this into watchface settings.
+Copy the printed token (a long string). Paste it into watchface settings on your phone or in the emulator config UI.
 
 **Optional — auto-refresh when the token expires:**
 
@@ -49,28 +63,15 @@ pebble install --phone             # physical watch via phone
 **Emulator:**
 
 ```bash
-# Terminal 1 — emulator with watchface running
 pebble install --emulator emery
-
-# Terminal 2 — settings page in browser
 pebble emu-app-config --emulator emery
 ```
 
-Paste the access token, configure options below, click **Save**. Live Hey data appears within ~30 seconds.
+Paste the access token, click **Save**. Live Hey data appears within ~30 seconds.
 
-**On a phone:** Install via CloudPebble or the Pebble app, then long-press the watchface → **Settings**.
+**On a phone:** Long-press the watchface → **Settings**.
 
-### Optional: dev token file (emulator)
-
-Avoid reopening settings on every rebuild:
-
-```bash
-cp src/pkjs/dev-settings.js.example src/pkjs/dev-settings.js
-# edit dev-settings.js with your token, then:
-pebble build && pebble install --emulator emery
-```
-
-`dev-settings.js` is gitignored — never commit real tokens.
+> **Publishing:** Never put tokens in source files. Settings come only from Clay/localStorage on each user's phone. After changing pkjs, verify the PBW is clean: `unzip -p build/hey-watchface.pbw pebble-js-app.js | grep -c eyJfcmF` should print `0`.
 
 ---
 
@@ -156,7 +157,7 @@ hey-watchface/
 ├── resources/images/habits/  # 47 icon pairs + default (committed PNGs)
 ├── package.json              # Pebble manifest and resource list
 ├── wscript
-├── screenshot_emery.png      # Store / preview screenshot
+├── emery_screenshot.png      # Store / preview screenshot
 └── STORE.md                  # App store listing draft
 ```
 
