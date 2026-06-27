@@ -113,6 +113,13 @@ Claude will automatically invoke the `pebble-watchface` skill and handle everyth
 
 **Emery is the default target.** Gabbro (round) support can be added as a second pass.
 
+## Sample Watchfaces
+
+| Project | Description |
+|---------|-------------|
+| [`hey-watchface/`](hey-watchface/) | Hey habits, todos, and calendar for Pebble Time 2 (Emery) |
+| [`samples/projects/batman-watchface/`](samples/projects/batman-watchface/) | Animated Bat Signal watchface |
+
 ## Weather Watchfaces
 
 The skill supports watchfaces that display weather and other web data using the **AppMessage + PebbleKit JS** pattern:

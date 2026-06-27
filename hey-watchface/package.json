@@ -1,0 +1,525 @@
+{
+  "name": "hey-watchface",
+  "author": "Kyle Dellis",
+  "version": "1.0.0",
+  "keywords": [
+    "pebble-app"
+  ],
+  "private": true,
+  "dependencies": {
+    "@rebble/clay": "^1.0.8"
+  },
+  "pebble": {
+    "displayName": "Hey",
+    "uuid": "32fc2d81-66e4-45ee-8589-2350312ed88c",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery"
+    ],
+    "watchapp": {
+      "watchface": true
+    },
+    "capabilities": [
+      "configurable"
+    ],
+    "messageKeys": [
+      "REQUEST_HEY_DATA",
+      "QUERY_DATE",
+      "HABIT_COUNT",
+      "HABIT_DONE_MASK",
+      "HABIT_ICONS",
+      "HABIT_COLORS",
+      "TODO_TEXT",
+      "FOOTER_KIND",
+      "SYNC_STATUS",
+      "THEME_MODE",
+      "FooterContent",
+      "SyncTimeline"
+    ],
+    "resources": {
+      "media": [
+        {
+          "type": "png",
+          "name": "HABIT_ICON_ART",
+          "file": "images/habits/art.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_ART_W",
+          "file": "images/habits/art_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BASEBALL",
+          "file": "images/habits/baseball.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BASEBALL_W",
+          "file": "images/habits/baseball_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BASKETBALL",
+          "file": "images/habits/basketball.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BASKETBALL_W",
+          "file": "images/habits/basketball_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BED",
+          "file": "images/habits/bed.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BED_W",
+          "file": "images/habits/bed_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BICYCLE",
+          "file": "images/habits/bicycle.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BICYCLE_W",
+          "file": "images/habits/bicycle_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BRAIN",
+          "file": "images/habits/brain.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BRAIN_W",
+          "file": "images/habits/brain_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BREATHE",
+          "file": "images/habits/breathe.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_BREATHE_W",
+          "file": "images/habits/breathe_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_CAMERA",
+          "file": "images/habits/camera.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_CAMERA_W",
+          "file": "images/habits/camera_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_CAT",
+          "file": "images/habits/cat.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_CAT_W",
+          "file": "images/habits/cat_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_CHURCH",
+          "file": "images/habits/church.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_CHURCH_W",
+          "file": "images/habits/church_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_CLEAN",
+          "file": "images/habits/clean.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_CLEAN_W",
+          "file": "images/habits/clean_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_COOK",
+          "file": "images/habits/cook.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_COOK_W",
+          "file": "images/habits/cook_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_DOG",
+          "file": "images/habits/dog.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_DOG_W",
+          "file": "images/habits/dog_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_DRINK",
+          "file": "images/habits/drink.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_DRINK_W",
+          "file": "images/habits/drink_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_FOOTBALL",
+          "file": "images/habits/football.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_FOOTBALL_W",
+          "file": "images/habits/football_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_FRUIT",
+          "file": "images/habits/fruit.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_FRUIT_W",
+          "file": "images/habits/fruit_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_GAME",
+          "file": "images/habits/game.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_GAME_W",
+          "file": "images/habits/game_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_GARDEN",
+          "file": "images/habits/garden.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_GARDEN_W",
+          "file": "images/habits/garden_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_GUITAR",
+          "file": "images/habits/guitar.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_GUITAR_W",
+          "file": "images/habits/guitar_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_HEART",
+          "file": "images/habits/heart.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_HEART_W",
+          "file": "images/habits/heart_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_HEAT",
+          "file": "images/habits/heat.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_HEAT_W",
+          "file": "images/habits/heat_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_HYDRATE",
+          "file": "images/habits/hydrate.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_HYDRATE_W",
+          "file": "images/habits/hydrate_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_ICE",
+          "file": "images/habits/ice.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_ICE_W",
+          "file": "images/habits/ice_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_LOTUS",
+          "file": "images/habits/lotus.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_LOTUS_W",
+          "file": "images/habits/lotus_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_MEDITATE",
+          "file": "images/habits/meditate.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_MEDITATE_W",
+          "file": "images/habits/meditate_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_MONEY",
+          "file": "images/habits/money.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_MONEY_W",
+          "file": "images/habits/money_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_MUSIC",
+          "file": "images/habits/music.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_MUSIC_W",
+          "file": "images/habits/music_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_PIANO",
+          "file": "images/habits/piano.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_PIANO_W",
+          "file": "images/habits/piano_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_PILL",
+          "file": "images/habits/pill.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_PILL_W",
+          "file": "images/habits/pill_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_PLANT",
+          "file": "images/habits/plant.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_PLANT_W",
+          "file": "images/habits/plant_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_READ",
+          "file": "images/habits/read.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_READ_W",
+          "file": "images/habits/read_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_RUN",
+          "file": "images/habits/run.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_RUN_W",
+          "file": "images/habits/run_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_SMOKE",
+          "file": "images/habits/smoke.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_SMOKE_W",
+          "file": "images/habits/smoke_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_SOCCER",
+          "file": "images/habits/soccer.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_SOCCER_W",
+          "file": "images/habits/soccer_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_STAR",
+          "file": "images/habits/star.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_STAR_W",
+          "file": "images/habits/star_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_STUDY",
+          "file": "images/habits/study.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_STUDY_W",
+          "file": "images/habits/study_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_SWIM",
+          "file": "images/habits/swim.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_SWIM_W",
+          "file": "images/habits/swim_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_TEA",
+          "file": "images/habits/tea.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_TEA_W",
+          "file": "images/habits/tea_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_TOOTHBRUSH",
+          "file": "images/habits/toothbrush.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_TOOTHBRUSH_W",
+          "file": "images/habits/toothbrush_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_TREE",
+          "file": "images/habits/tree.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_TREE_W",
+          "file": "images/habits/tree_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_TV",
+          "file": "images/habits/tv.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_TV_W",
+          "file": "images/habits/tv_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_VEGETABLE",
+          "file": "images/habits/vegetable.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_VEGETABLE_W",
+          "file": "images/habits/vegetable_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_WALK",
+          "file": "images/habits/walk.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_WALK_W",
+          "file": "images/habits/walk_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_WATER",
+          "file": "images/habits/water.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_WATER_W",
+          "file": "images/habits/water_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_WEIGHTS",
+          "file": "images/habits/weights.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_WEIGHTS_W",
+          "file": "images/habits/weights_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_WRITE",
+          "file": "images/habits/write.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_WRITE_W",
+          "file": "images/habits/write_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_YOGA",
+          "file": "images/habits/yoga.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_YOGA_W",
+          "file": "images/habits/yoga_w.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_DEFAULT",
+          "file": "images/habits/default.png"
+        },
+        {
+          "type": "png",
+          "name": "HABIT_ICON_DEFAULT_W",
+          "file": "images/habits/default_w.png"
+        }
+      ]
+    }
+  }
+}

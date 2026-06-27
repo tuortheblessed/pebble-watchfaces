@@ -1,0 +1,9 @@
+// Copy to dev-settings.js and paste your token for local emulator testing.
+// dev-settings.js is gitignored — never commit real tokens.
+
+module.exports = {
+  HeyAccessToken: 'paste-token-from-hey-auth-token-here',
+  // Paste only the token string — no "Bearer " prefix, no trailing % from zsh prompt
+  HeyRefreshToken: '',
+  HeyTokenEndpoint: ''
+};
