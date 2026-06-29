@@ -539,7 +539,7 @@ function catalogEntryFromHabit(habit) {
   };
 }
 
-function mergeHabitsIntoCatalog(catalog, habits) {
+function mergeHabitsIntoCatalog(catalog, habits, preferToday) {
   var i;
   var habit;
   var entry;
@@ -551,7 +551,7 @@ function mergeHabitsIntoCatalog(catalog, habits) {
     }
     entry = catalogEntryFromHabit(habit);
     current = catalog[habit.id];
-    if (!current || habitDetailScore(habit) > habitDetailScore(current)) {
+    if (preferToday || !current || habitDetailScore(habit) > habitDetailScore(current)) {
       catalog[habit.id] = entry;
     }
   }
@@ -596,8 +596,8 @@ function extractHabitsFromPayload(payload) {
 
 function syncHabitCatalog(todayPayload, weekPayload) {
   var catalog = loadHabitCatalog();
-  mergeHabitsIntoCatalog(catalog, extractHabitsFromPayload(weekPayload));
-  mergeHabitsIntoCatalog(catalog, extractHabitsFromPayload(todayPayload));
+  mergeHabitsIntoCatalog(catalog, extractHabitsFromPayload(weekPayload), false);
+  mergeHabitsIntoCatalog(catalog, extractHabitsFromPayload(todayPayload), true);
   saveHabitCatalog(catalog);
   var list = [];
   for (var id in catalog) {
@@ -619,6 +619,74 @@ function scheduledHabitsFromList(habits, queryDate) {
   return scheduled;
 }
 
+function catalogMapFromList(catalogList) {
+  var map = {};
+  var i;
+  for (i = 0; i < catalogList.length; i++) {
+    if (catalogList[i] && catalogList[i].id) {
+      map[catalogList[i].id] = catalogList[i];
+    }
+  }
+  return map;
+}
+
+function enrichHabitFromCatalog(habit, catalogMap) {
+  var cached = catalogMap[habit.id];
+  if (!cached) {
+    return habit;
+  }
+  return {
+    id: habit.id,
+    title: habit.title || cached.title || '',
+    icon: habit.icon || cached.icon || '',
+    icon_url: habit.icon_url || cached.icon_url || '',
+    color: habit.color || cached.color || 'blue',
+    days: (habit.days && habit.days.length) ? habit.days : (cached.days || [])
+  };
+}
+
+function habitsForToday(catalogList, todayPayload, queryDate) {
+  var catalogMap = catalogMapFromList(catalogList);
+  var todayHabits = extractHabitsFromPayload(todayPayload);
+  var byId = {};
+  var scheduled = [];
+  var doneMap = habitCompletionMap(todayPayload, queryDate);
+  var i;
+  var id;
+  var habit;
+
+  for (i = 0; i < todayHabits.length; i++) {
+    habit = enrichHabitFromCatalog(todayHabits[i], catalogMap);
+    byId[habit.id] = habit;
+    scheduled.push(habit);
+  }
+
+  for (id in doneMap) {
+    if (!doneMap.hasOwnProperty(id) || byId[id] || !catalogMap[id]) {
+      continue;
+    }
+    habit = catalogMap[id];
+    byId[id] = habit;
+    scheduled.push(habit);
+  }
+
+  for (i = 0; i < catalogList.length; i++) {
+    habit = catalogList[i];
+    if (!habit || !habit.id || byId[habit.id]) {
+      continue;
+    }
+    if (habitScheduledForDate(habit, queryDate)) {
+      byId[habit.id] = habit;
+      scheduled.push(habit);
+    }
+  }
+
+  if (scheduled.length === 0) {
+    return scheduledHabitsFromList(catalogList, queryDate);
+  }
+  return scheduled;
+}
+
 function habitIconSlug(habit) {
   var slug = habit.icon || '';
   if (!slug && habit.icon_url) {
@@ -630,7 +698,8 @@ function habitIconSlug(habit) {
 }
 
 function pickHabits(catalog, todayPayload, queryDate) {
-  var scheduled = scheduledHabitsFromList(catalog, queryDate);
+  var todayHabits = extractHabitsFromPayload(todayPayload);
+  var scheduled = habitsForToday(catalog, todayPayload, queryDate);
   var doneMap = habitCompletionMap(todayPayload, queryDate);
   var slots = getHabitSlotNames();
   var hasPinnedSlots = false;
@@ -712,7 +781,9 @@ function pickHabits(catalog, todayPayload, queryDate) {
     icons: icons.join('|'),
     colors: colors.join('|'),
     mask: mask,
-    titles: titles
+    titles: titles,
+    todayHabitsCount: todayHabits.length,
+    scheduledCount: scheduled.length
   };
 }
 
@@ -741,15 +812,18 @@ function collectCalendarTodos(recordingsPayload) {
 
 function collectIncompleteTodos(recordingsPayload) {
   var todos = collectCalendarTodos(recordingsPayload);
-  var titles = [];
+  var result = [];
   var i;
   for (i = 0; i < todos.length; i++) {
     if (!isZeroDate(todos[i].completed_at)) {
       continue;
     }
-    titles.push(todos[i].title || '');
+    result.push({
+      title: todos[i].title || '',
+      color: todos[i].color || 'blue'
+    });
   }
-  return titles;
+  return result;
 }
 
 function collectCalendarEvents(recordingsPayload) {
@@ -876,30 +950,51 @@ function pickNextEvent(recordingsPayload, today) {
 function pickFooter(todayRecordings, weekRecordings, today) {
   var mode = footerContentMode();
   if (mode === 'off') {
-    return { text: '', kind: 0 };
+    return { text: '', color: 'blue', kind: 0 };
   }
   if (mode === 'event') {
-    return { text: pickNextEvent(weekRecordings, today), kind: 2 };
+    return {
+      text: pickNextEvent(weekRecordings, today),
+      color: 'gold',
+      kind: 2
+    };
   }
-  return { text: pickTodo(todayRecordings), kind: 1 };
+  var todo = pickTodo(todayRecordings);
+  return { text: todo.text, color: todo.color, kind: 1 };
 }
 
 function pickTodo(recordingsPayload) {
   var todos = collectIncompleteTodos(recordingsPayload);
   if (todos.length === 0) {
     todoRotateIndex = 0;
-    return '';
+    return { text: '', color: 'blue' };
   }
   if (todoRotateIndex >= todos.length) {
     todoRotateIndex = 0;
   }
-  var title = todos[todoRotateIndex];
+  var todo = todos[todoRotateIndex];
   todoRotateIndex = (todoRotateIndex + 1) % todos.length;
-  return title;
+  return { text: todo.title, color: todo.color };
 }
 
 function themeModeByte() {
-  return readClaySetting('AppearanceMode', 'light') === 'dark' ? 1 : 0;
+  var mode = clayValue(readClaySetting('AppearanceMode', 'light'));
+  return String(mode).toLowerCase() === 'dark' ? 1 : 0;
+}
+
+function pushThemeToWatch(done) {
+  var mode = themeModeByte();
+  console.log('Pushing THEME_MODE=' + mode);
+  Pebble.sendAppMessage({ 'THEME_MODE': mode }, function() {
+    if (done) {
+      done();
+    }
+  }, function(e) {
+    console.log('Theme push failed: ' + e.error.message);
+    if (done) {
+      done();
+    }
+  });
 }
 
 function getStoredTimelinePinIds() {
@@ -1071,7 +1166,8 @@ function syncTimelinePins(recordingsPayload, today) {
 function sendToWatch(payload) {
   payload.THEME_MODE = themeModeByte();
   Pebble.sendAppMessage(payload, function() {
-    console.log('Hey sent: habits=' + payload.HABIT_COUNT + ' status=' + payload.SYNC_STATUS);
+    console.log('Hey sent: theme=' + payload.THEME_MODE + ' habits=' + payload.HABIT_COUNT +
+      ' status=' + payload.SYNC_STATUS);
   }, function(e) {
     console.log('Failed to send Hey data: ' + e.error.message);
   });
@@ -1085,6 +1181,7 @@ function sendError(status, reason) {
     'HABIT_ICONS': '',
     'HABIT_COLORS': '',
     'TODO_TEXT': reason ? reason.substring(0, TODO_FOOTER_TEXT_MAX) : '',
+    'TODO_COLOR': 'blue',
     'FOOTER_KIND': 0,
     'SYNC_STATUS': status
   });
@@ -1118,6 +1215,7 @@ function fetchHeyData(queryDate) {
       'HABIT_ICONS': '',
       'HABIT_COLORS': '',
       'TODO_TEXT': 'Add Hey token in watchface settings',
+      'TODO_COLOR': 'blue',
       'FOOTER_KIND': 1,
       'SYNC_STATUS': 1
     });
@@ -1186,11 +1284,11 @@ function fetchHeyData(queryDate) {
         var habits = pickHabits(catalog, todayPayload, date);
         var footer = pickFooter(todayPayload, weekPayload, date);
         var todoCount = collectIncompleteTodos(todayPayload).length;
-        var scheduled = scheduledHabitsFromList(catalog, date);
         var maskBits = '0b' + habits.mask.toString(2);
 
         console.log('Hey sync ' + date + ': catalog=' + catalog.length +
-          ' scheduled=' + scheduled.length + ' picked=' + habits.count +
+          ' todayHabits=' + habits.todayHabitsCount +
+          ' scheduled=' + habits.scheduledCount + ' picked=' + habits.count +
           ' mask=' + maskBits + ' [' + habits.titles.join(', ') + '], ' +
           todoCount + ' todos, footer=' + footer.text + ', mode=' +
           footerContentMode());
@@ -1201,6 +1299,7 @@ function fetchHeyData(queryDate) {
           'HABIT_ICONS': habits.icons,
           'HABIT_COLORS': habits.colors,
           'TODO_TEXT': footer.text.substring(0, TODO_FOOTER_TEXT_MAX),
+          'TODO_COLOR': footer.color || 'blue',
           'FOOTER_KIND': footer.kind,
           'SYNC_STATUS': 0
         });
@@ -1213,7 +1312,9 @@ function fetchHeyData(queryDate) {
 
 Pebble.addEventListener('ready', function() {
   console.log('Hey pkjs ready');
-  fetchHeyData();
+  pushThemeToWatch(function() {
+    fetchHeyData();
+  });
 });
 
 Pebble.addEventListener('appmessage', function(e) {
@@ -1229,20 +1330,25 @@ Pebble.addEventListener('webviewclosed', function(e) {
   var config = JSON.parse(decodeURIComponent(e.response));
   if (isSettingEnabled(config.DisconnectHey)) {
     clearHeyCredentials();
-    fetchHeyData();
+    persistPreferenceSettings(config);
+    pushThemeToWatch(function() {
+      fetchHeyData();
+    });
     return;
   }
   saveHeyTokenSettings(config);
   var wasTimelineEnabled = syncTimelineEnabled();
   persistPreferenceSettings(config);
-  if (config.SyncTimeline !== undefined) {
-    var enableTimeline = isSettingEnabled(config.SyncTimeline);
-    if (wasTimelineEnabled && !enableTimeline) {
-      clearAllTimelinePins(function() {
-        fetchHeyData();
-      });
-      return;
+  pushThemeToWatch(function() {
+    if (config.SyncTimeline !== undefined) {
+      var enableTimeline = isSettingEnabled(config.SyncTimeline);
+      if (wasTimelineEnabled && !enableTimeline) {
+        clearAllTimelinePins(function() {
+          fetchHeyData();
+        });
+        return;
+      }
     }
-  }
-  fetchHeyData();
+    fetchHeyData();
+  });
 });

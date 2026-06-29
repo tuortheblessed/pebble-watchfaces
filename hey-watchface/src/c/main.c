@@ -7,14 +7,25 @@
 #define TODO_MAX_LEN 80
 #define REFRESH_INTERVAL_MS 30000
 
-#define PERIMETER_INSET 12
+#define HABIT_CORNER_INSET 8
+#define EDGE_INSET 12
 #define HABIT_CHIP_RADIUS 16
-#define HABIT_CHIP_SIZE (HABIT_CHIP_RADIUS * 2)
-#define INNER_INSET 12
-#define TODO_FOOTER_HEIGHT 30
-#define TODO_FOOTER_MARGIN 4
-#define TODO_BELOW_HABITS_GAP 10
-#define FOOTER_TICK_CLEARANCE (PERIMETER_INSET + TICK_LEN_HOUR + 8)
+#define DATE_BLOB_W 100
+#define DATE_BLOB_H 52
+#define TODO_FOOTER_HEIGHT 52
+#define TODO_TICK_GAP 11
+#define TODO_HABIT_GAP 4
+#define TODO_SIDE_EXTRA 0
+#define TODO_CORNER_RADIUS (TODO_FOOTER_HEIGHT / 2)
+#define TODO_TEXT_MAX_LINES 3
+#define TODO_TEXT_LINE_HEIGHT 16
+#define TODO_TEXT_PAD_X 8
+
+#define TICK_LEN_HOUR 7
+#define TICK_LEN_QUARTER 12
+#define HAND_MINUTE_RATIO 75
+#define HAND_HOUR_RATIO 55
+#define HAND_HUB_RADIUS 3
 
 #define HEY_RGB(r, g, b) GColorFromRGB((r), (g), (b))
 
@@ -22,27 +33,25 @@ typedef struct {
   GColor bg;
   GColor ink;
   GColor text_secondary;
-  GColor chip_bg;
+  GColor date_splash;
+  GColor date_splash_ink;
+  GColor todo_pill;
+  GColor todo_pill_border;
+  GColor todo_pill_ink;
   GColor tick_normal;
-  GColor tick_hour;
-  GColor tick_minute_accent;
-  GColor tick_hour_accent;
-  GColor frame;
-  GColor todo_bar;
+  GColor tick_blue;
+  GColor tick_purple;
+  GColor tick_green;
+  GColor hand_hour;
+  GColor hand_minute;
+  GColor hand_hub;
 } HeyTheme;
 
-#define TICK_LEN_NORMAL 5
-#define TICK_LEN_HOUR 11
-#define TICK_LEN_CURRENT_MIN 15
-#define TICK_LEN_CURRENT_HOUR 20
-
 typedef struct {
-  GRect inner;
-  GRect tick_bounds;
-  int habit_center_y;
-  int date_center_y;
-  int habit_offset_x;
-  int habit_offset_y;
+  GPoint clock_center;
+  int clock_radius;
+  GPoint habit_corners[4];
+  int date_blob_y;
   int todo_y;
   int todo_height;
   int todo_margin;
@@ -50,20 +59,20 @@ typedef struct {
 
 static Window *s_window;
 static Layer *s_canvas_layer;
-static TextLayer *s_date_weekday_layer;
-static TextLayer *s_date_day_layer;
+static GBitmap *s_date_splash_bitmap = NULL;
 
 static Layout s_layout;
-static GPoint s_center;
-static int s_current_minute = -1;
-static int s_current_hour_tick = -1;
+
+static char s_date_month[8];
+static char s_date_dayline[12];
 
 static uint8_t s_habit_count = 0;
 static uint8_t s_habit_done_mask = 0;
 static char s_habit_icons[MAX_HABITS][ICON_SLUG_LEN];
 static char s_habit_colors[MAX_HABITS][COLOR_SLUG_LEN];
 static char s_todo_text[TODO_MAX_LEN + 1];
-static uint8_t s_footer_kind = 0;
+static char s_todo_display[TODO_MAX_LEN + 8];
+static char s_todo_color[COLOR_SLUG_LEN] = "blue";
 static uint8_t s_sync_status = 0;
 static uint8_t s_theme_mode = 0;
 static HeyTheme s_theme;
@@ -86,178 +95,193 @@ static void apply_theme(uint8_t mode) {
       .bg = HEY_RGB(27, 39, 51),
       .ink = HEY_RGB(236, 233, 230),
       .text_secondary = HEY_RGB(155, 153, 152),
-      .chip_bg = HEY_RGB(27, 39, 51),
+      .date_splash = HEY_RGB(255, 155, 88),
+      .date_splash_ink = HEY_RGB(35, 28, 51),
+      .todo_pill = HEY_RGB(58, 58, 64),
+      .todo_pill_border = HEY_RGB(88, 88, 96),
+      .todo_pill_ink = HEY_RGB(236, 233, 230),
       .tick_normal = HEY_RGB(80, 88, 98),
-      .tick_hour = HEY_RGB(140, 145, 155),
-      .tick_minute_accent = HEY_RGB(80, 162, 255),
-      .tick_hour_accent = HEY_RGB(134, 126, 255),
-      .frame = HEY_RGB(50, 58, 70),
-      .todo_bar = HEY_RGB(32, 44, 56),
+      .tick_blue = HEY_RGB(80, 162, 255),
+      .tick_purple = HEY_RGB(134, 126, 255),
+      .tick_green = HEY_RGB(105, 240, 174),
+      .hand_hour = HEY_RGB(134, 126, 255),
+      .hand_minute = HEY_RGB(80, 162, 255),
+      .hand_hub = HEY_RGB(134, 126, 255),
     };
   } else {
     s_theme = (HeyTheme) {
-      .bg = HEY_RGB(255, 255, 255),
+      .bg = HEY_RGB(250, 248, 245),
       .ink = HEY_RGB(35, 28, 51),
       .text_secondary = HEY_RGB(116, 116, 128),
-      .chip_bg = HEY_RGB(255, 255, 255),
+      .date_splash = HEY_RGB(255, 138, 50),
+      .date_splash_ink = HEY_RGB(255, 255, 255),
+      .todo_pill = HEY_RGB(168, 168, 255),
+      .todo_pill_border = HEY_RGB(168, 168, 255),
+      .todo_pill_ink = HEY_RGB(35, 28, 51),
       .tick_normal = HEY_RGB(170, 170, 178),
-      .tick_hour = HEY_RGB(60, 60, 72),
-      .tick_minute_accent = HEY_RGB(0, 116, 228),
-      .tick_hour_accent = HEY_RGB(85, 34, 250),
-      .frame = HEY_RGB(228, 228, 232),
-      .todo_bar = HEY_RGB(245, 245, 247),
+      .tick_blue = HEY_RGB(0, 116, 228),
+      .tick_purple = HEY_RGB(85, 34, 250),
+      .tick_green = HEY_RGB(41, 152, 80),
+      .hand_hour = HEY_RGB(85, 34, 250),
+      .hand_minute = HEY_RGB(0, 116, 228),
+      .hand_hub = HEY_RGB(85, 34, 250),
     };
   }
 
   if (s_window) {
     window_set_background_color(s_window, s_theme.bg);
   }
-  if (s_date_weekday_layer) {
-    text_layer_set_text_color(s_date_weekday_layer, s_theme.ink);
-    text_layer_set_text_color(s_date_day_layer, s_theme.text_secondary);
+}
+
+static int clock_radius_for_bounds(GRect bounds, GPoint center) {
+  int r_top = center.y - EDGE_INSET;
+  int r_bottom = bounds.size.h - EDGE_INSET - center.y;
+  int r_left = center.x - EDGE_INSET;
+  int r_right = bounds.size.w - EDGE_INSET - center.x;
+  int r = r_top;
+  if (r_bottom < r) {
+    r = r_bottom;
   }
+  if (r_left < r) {
+    r = r_left;
+  }
+  if (r_right < r) {
+    r = r_right;
+  }
+  return r;
 }
 
 static void compute_layout(GRect bounds) {
-  s_layout.inner = GRect(INNER_INSET, INNER_INSET,
-                         bounds.size.w - INNER_INSET * 2,
-                         bounds.size.h - INNER_INSET * 2);
-  s_layout.tick_bounds = bounds;
-  s_layout.habit_center_y = s_layout.inner.origin.y + (s_layout.inner.size.h / 2) - 14;
-  s_layout.habit_offset_x = (int)(s_layout.inner.size.w / 5.5f);
-  s_layout.habit_offset_y = 40;
-  s_layout.date_center_y = s_layout.habit_center_y;
+  int habit_corner = HABIT_CORNER_INSET + HABIT_CHIP_RADIUS;
+
+  s_layout.clock_center = grect_center_point(&bounds);
+  s_layout.clock_radius = clock_radius_for_bounds(bounds, s_layout.clock_center);
+  s_layout.habit_corners[0] = GPoint(habit_corner, habit_corner);
+  s_layout.habit_corners[1] = GPoint(bounds.size.w - habit_corner, habit_corner);
+  s_layout.habit_corners[2] = GPoint(habit_corner, bounds.size.h - habit_corner);
+  s_layout.habit_corners[3] = GPoint(bounds.size.w - habit_corner, bounds.size.h - habit_corner);
   s_layout.todo_height = TODO_FOOTER_HEIGHT;
-  s_layout.todo_margin = TODO_FOOTER_MARGIN;
+  s_layout.todo_margin = habit_corner + HABIT_CHIP_RADIUS + TODO_HABIT_GAP + TODO_SIDE_EXTRA;
 
-  int bottom_habit_bottom = s_layout.habit_center_y + s_layout.habit_offset_y + (HABIT_CHIP_SIZE / 2);
-  s_layout.todo_y = bottom_habit_bottom + TODO_BELOW_HABITS_GAP;
+  int tick_inner_top = s_layout.clock_center.y - s_layout.clock_radius + TICK_LEN_QUARTER;
+  int date_mid_y = (s_layout.clock_center.y + tick_inner_top) / 2;
+  s_layout.date_blob_y = date_mid_y - DATE_BLOB_H / 2;
 
-  int max_footer_bottom = bounds.size.h - FOOTER_TICK_CLEARANCE;
-  if (s_layout.todo_y + s_layout.todo_height > max_footer_bottom) {
-    s_layout.todo_y = max_footer_bottom - s_layout.todo_height;
-  }
-
-  s_center = grect_center_point(&bounds);
+  int tick_inner_bottom = s_layout.clock_center.y + s_layout.clock_radius - TICK_LEN_QUARTER;
+  s_layout.todo_y = tick_inner_bottom - s_layout.todo_height - TODO_TICK_GAP;
 }
 
 static GPoint habit_chip_center(int index) {
-  int cx = s_layout.inner.origin.x + s_layout.inner.size.w / 2;
-  int cy = s_layout.habit_center_y;
-
-  switch (index) {
-    case 0: return GPoint(cx - s_layout.habit_offset_x, cy - s_layout.habit_offset_y);
-    case 1: return GPoint(cx + s_layout.habit_offset_x, cy - s_layout.habit_offset_y);
-    case 2: return GPoint(cx - s_layout.habit_offset_x, cy + s_layout.habit_offset_y);
-    default: return GPoint(cx + s_layout.habit_offset_x, cy + s_layout.habit_offset_y);
+  if (index >= 0 && index < MAX_HABITS) {
+    return s_layout.habit_corners[index];
   }
+  return s_layout.clock_center;
 }
 
-static GPoint point_on_rect_perimeter(int dist, GRect bounds) {
-  int w = bounds.size.w;
-  int h = bounds.size.h;
-  int cx = bounds.size.w / 2;
-  int perimeter = 2 * (w + h);
-  int d = dist % perimeter;
-  int half_w = w / 2;
-
-  if (d < half_w) {
-    return GPoint(cx + d, PERIMETER_INSET);
+static void hey_color_rgb(const char *slug, uint8_t *r, uint8_t *g, uint8_t *b) {
+  if (s_theme_mode) {
+    if (strcmp(slug, "green") == 0) { *r = 105; *g = 240; *b = 174; return; }
+    if (strcmp(slug, "red") == 0) { *r = 255; *g = 120; *b = 120; return; }
+    if (strcmp(slug, "orange") == 0) { *r = 255; *g = 184; *b = 92; return; }
+    if (strcmp(slug, "gold") == 0) { *r = 249; *g = 213; *b = 122; return; }
+    if (strcmp(slug, "yellow") == 0) { *r = 251; *g = 225; *b = 144; return; }
+    if (strcmp(slug, "purple") == 0) { *r = 134; *g = 126; *b = 255; return; }
+    if (strcmp(slug, "pink") == 0) { *r = 242; *g = 136; *b = 187; return; }
+    if (strcmp(slug, "teal") == 0) { *r = 157; *g = 255; *b = 236; return; }
+    if (strcmp(slug, "brown") == 0) { *r = 185; *g = 165; *b = 151; return; }
+    *r = 80; *g = 162; *b = 255;
+    return;
   }
-  d -= half_w;
-  if (d < h) {
-    return GPoint(w - 1 - PERIMETER_INSET, d);
-  }
-  d -= h;
-  if (d < w) {
-    return GPoint(w - 1 - d, h - 1 - PERIMETER_INSET);
-  }
-  d -= w;
-  if (d < h) {
-    return GPoint(PERIMETER_INSET, h - 1 - d);
-  }
-  d -= h;
-  return GPoint(d, PERIMETER_INSET);
-}
-
-static void draw_radial_tick(GContext *ctx, int minute, GRect bounds, GPoint center) {
-  int perimeter = 2 * (bounds.size.w + bounds.size.h);
-  int dist = (minute * perimeter) / 60;
-  GPoint outer = point_on_rect_perimeter(dist, bounds);
-
-  int dx = center.x - outer.x;
-  int dy = center.y - outer.y;
-  int32_t angle = atan2_lookup(dy, dx);
-
-  bool is_hour_mark = (minute % 5) == 0;
-  bool is_current_minute = minute == s_current_minute;
-  bool is_current_hour = is_hour_mark && minute == s_current_hour_tick;
-
-  int tick_len = TICK_LEN_NORMAL;
-  int stroke = 1;
-  GColor color = s_theme.tick_normal;
-
-  if (is_current_hour) {
-    tick_len = TICK_LEN_CURRENT_HOUR;
-    stroke = 4;
-    color = s_theme.tick_hour_accent;
-  } else if (is_current_minute) {
-    tick_len = TICK_LEN_CURRENT_MIN;
-    stroke = 3;
-    color = s_theme.tick_minute_accent;
-  } else if (is_hour_mark) {
-    tick_len = TICK_LEN_HOUR;
-    stroke = 2;
-    color = s_theme.tick_hour;
-  }
-
-  GPoint inner = {
-    outer.x + (cos_lookup(angle) * tick_len) / TRIG_MAX_RATIO,
-    outer.y + (sin_lookup(angle) * tick_len) / TRIG_MAX_RATIO
-  };
-
-  graphics_context_set_stroke_color(ctx, color);
-  graphics_context_set_stroke_width(ctx, stroke);
-  graphics_draw_line(ctx, outer, inner);
-}
-
-static void draw_tick_ring(GContext *ctx) {
-  for (int minute = 0; minute < 60; minute++) {
-    draw_radial_tick(ctx, minute, s_layout.tick_bounds, s_center);
-  }
-}
-
-static void draw_inner_frame(GContext *ctx) {
-  graphics_context_set_stroke_color(ctx, s_theme.frame);
-  graphics_context_set_stroke_width(ctx, 1);
-  graphics_draw_rect(ctx, s_layout.inner);
+  if (strcmp(slug, "green") == 0) { *r = 41; *g = 152; *b = 80; return; }
+  if (strcmp(slug, "red") == 0) { *r = 201; *g = 36; *b = 0; return; }
+  if (strcmp(slug, "orange") == 0) { *r = 248; *g = 121; *b = 23; return; }
+  if (strcmp(slug, "gold") == 0) { *r = 166; *g = 119; *b = 0; return; }
+  if (strcmp(slug, "yellow") == 0) { *r = 255; *g = 214; *b = 10; return; }
+  if (strcmp(slug, "purple") == 0) { *r = 85; *g = 34; *b = 250; return; }
+  if (strcmp(slug, "pink") == 0) { *r = 179; *g = 25; *b = 99; return; }
+  if (strcmp(slug, "teal") == 0) { *r = 19; *g = 142; *b = 158; return; }
+  if (strcmp(slug, "brown") == 0) { *r = 119; *g = 109; *b = 99; return; }
+  *r = 0; *g = 116; *b = 228;
 }
 
 static GColor hey_color_fill(const char *slug) {
-  if (s_theme_mode) {
-    if (strcmp(slug, "blue") == 0) return HEY_RGB(80, 162, 255);
-    if (strcmp(slug, "green") == 0) return HEY_RGB(105, 240, 174);
-    if (strcmp(slug, "red") == 0) return HEY_RGB(255, 120, 120);
-    if (strcmp(slug, "orange") == 0) return HEY_RGB(255, 184, 92);
-    if (strcmp(slug, "gold") == 0) return HEY_RGB(249, 213, 122);
-    if (strcmp(slug, "yellow") == 0) return HEY_RGB(251, 225, 144);
-    if (strcmp(slug, "purple") == 0) return HEY_RGB(134, 126, 255);
-    if (strcmp(slug, "pink") == 0) return HEY_RGB(242, 136, 187);
-    if (strcmp(slug, "teal") == 0) return HEY_RGB(157, 255, 236);
-    if (strcmp(slug, "brown") == 0) return HEY_RGB(185, 165, 151);
-    return s_theme.ink;
+  uint8_t r, g, b;
+  hey_color_rgb(slug, &r, &g, &b);
+  return HEY_RGB(r, g, b);
+}
+
+static GColor quarter_tick_color(int hour) {
+  if (hour == 0) {
+    return s_theme.tick_blue;
   }
-  if (strcmp(slug, "blue") == 0) return HEY_RGB(0, 116, 228);
-  if (strcmp(slug, "green") == 0) return HEY_RGB(41, 152, 80);
-  if (strcmp(slug, "red") == 0) return HEY_RGB(201, 36, 0);
-  if (strcmp(slug, "orange") == 0) return HEY_RGB(248, 121, 23);
-  if (strcmp(slug, "gold") == 0) return HEY_RGB(166, 119, 0);
-  if (strcmp(slug, "yellow") == 0) return HEY_RGB(255, 214, 10);
-  if (strcmp(slug, "purple") == 0) return HEY_RGB(85, 34, 250);
-  if (strcmp(slug, "pink") == 0) return HEY_RGB(179, 25, 99);
-  if (strcmp(slug, "teal") == 0) return HEY_RGB(19, 142, 158);
-  if (strcmp(slug, "brown") == 0) return HEY_RGB(119, 109, 99);
-  return s_theme.ink;
+  if (hour == 6) {
+    return s_theme.tick_green;
+  }
+  if (hour == 3 || hour == 9) {
+    return s_theme.tick_purple;
+  }
+  return s_theme.tick_normal;
+}
+
+static void draw_hour_ticks(GContext *ctx) {
+  GPoint center = s_layout.clock_center;
+  int radius = s_layout.clock_radius;
+
+  for (int hour = 0; hour < 12; hour++) {
+    int32_t angle = hour * TRIG_MAX_ANGLE / 12;
+    bool is_quarter = (hour % 3) == 0;
+    int tick_len = is_quarter ? TICK_LEN_QUARTER : TICK_LEN_HOUR;
+    int outer_r = radius;
+    int inner_r = outer_r - tick_len;
+    int stroke = is_quarter ? 2 : 1;
+    GColor color = is_quarter ? quarter_tick_color(hour) : s_theme.tick_normal;
+
+    GPoint outer = {
+      center.x + (sin_lookup(angle) * outer_r) / TRIG_MAX_RATIO,
+      center.y - (cos_lookup(angle) * outer_r) / TRIG_MAX_RATIO
+    };
+    GPoint inner = {
+      center.x + (sin_lookup(angle) * inner_r) / TRIG_MAX_RATIO,
+      center.y - (cos_lookup(angle) * inner_r) / TRIG_MAX_RATIO
+    };
+
+    graphics_context_set_stroke_color(ctx, color);
+    graphics_context_set_stroke_width(ctx, stroke);
+    graphics_draw_line(ctx, outer, inner);
+  }
+}
+
+static void draw_clock_hands(GContext *ctx, struct tm *tick_time) {
+  GPoint center = s_layout.clock_center;
+  int hour_len = (s_layout.clock_radius * HAND_HOUR_RATIO) / 100;
+  int minute_len = (s_layout.clock_radius * HAND_MINUTE_RATIO) / 100;
+
+  int32_t hour_angle = ((tick_time->tm_hour % 12) * TRIG_MAX_ANGLE / 12) +
+                       (tick_time->tm_min * TRIG_MAX_ANGLE / 12 / 60);
+  int32_t minute_angle = tick_time->tm_min * TRIG_MAX_ANGLE / 60;
+
+  GPoint hour_end = {
+    center.x + (sin_lookup(hour_angle) * hour_len) / TRIG_MAX_RATIO,
+    center.y - (cos_lookup(hour_angle) * hour_len) / TRIG_MAX_RATIO
+  };
+  GPoint minute_end = {
+    center.x + (sin_lookup(minute_angle) * minute_len) / TRIG_MAX_RATIO,
+    center.y - (cos_lookup(minute_angle) * minute_len) / TRIG_MAX_RATIO
+  };
+
+  graphics_context_set_stroke_color(ctx, s_theme.hand_hour);
+  graphics_context_set_stroke_width(ctx, 3);
+  graphics_draw_line(ctx, center, hour_end);
+
+  graphics_context_set_stroke_color(ctx, s_theme.hand_minute);
+  graphics_context_set_stroke_width(ctx, 2);
+  graphics_draw_line(ctx, center, minute_end);
+
+  graphics_context_set_fill_color(ctx, s_theme.hand_hub);
+  graphics_fill_circle(ctx, center, HAND_HUB_RADIUS);
+  graphics_context_set_stroke_color(ctx, s_theme.hand_minute);
+  graphics_context_set_stroke_width(ctx, 1);
+  graphics_draw_circle(ctx, center, HAND_HUB_RADIUS);
 }
 
 static const char *habit_icon_slug_alias(const char *slug) {
@@ -272,10 +296,6 @@ static const char *habit_icon_slug_alias(const char *slug) {
   if (strcmp(slug, "fitness") == 0) return "weights";
   if (strcmp(slug, "kettlebells") == 0) return "weights";
   return slug;
-}
-
-static GColor habit_ring_color(void) {
-  return s_theme_mode ? HEY_RGB(155, 153, 152) : HEY_RGB(154, 154, 160);
 }
 
 static void clear_habit_icon_cache(void) {
@@ -333,7 +353,7 @@ static void draw_habit_glyph(GContext *ctx, int slot, GPoint center, bool done,
     graphics_fill_circle(ctx, center, HABIT_CHIP_RADIUS);
     use_white_glyph = !s_theme_mode;
   } else {
-    graphics_context_set_stroke_color(ctx, habit_ring_color());
+    graphics_context_set_stroke_color(ctx, color);
     graphics_context_set_stroke_width(ctx, 2);
     graphics_draw_circle(ctx, center, HABIT_CHIP_RADIUS);
     use_white_glyph = s_theme_mode;
@@ -356,34 +376,148 @@ static void draw_habits(GContext *ctx) {
   }
 }
 
+static void draw_date_splash(GContext *ctx, GRect bounds) {
+  if (!s_date_splash_bitmap) {
+    return;
+  }
+
+  int blob_x = (bounds.size.w - DATE_BLOB_W) / 2;
+  GRect blob = GRect(blob_x, s_layout.date_blob_y, DATE_BLOB_W, DATE_BLOB_H);
+
+  graphics_context_set_compositing_mode(ctx, GCompOpSet);
+  graphics_draw_bitmap_in_rect(ctx, s_date_splash_bitmap, blob);
+  graphics_context_set_compositing_mode(ctx, GCompOpAssign);
+
+  graphics_context_set_text_color(ctx, s_theme.date_splash_ink);
+  GRect month_box = GRect(blob.origin.x, blob.origin.y + 4, blob.size.w, 16);
+  GRect day_box = GRect(blob.origin.x, blob.origin.y + 20, blob.size.w, 22);
+  graphics_draw_text(ctx, s_date_month, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                     month_box, GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, false);
+  graphics_draw_text(ctx, s_date_dayline, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
+                     day_box, GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, false);
+}
+
+static int todo_text_line_height(GFont font, int text_w) {
+  GRect box = GRect(0, 0, text_w, 200);
+  GSize one = graphics_text_layout_get_content_size(
+      "A", font, box, GTextOverflowModeWordWrap, GTextAlignmentCenter);
+  GSize two = graphics_text_layout_get_content_size(
+      "A\nB", font, box, GTextOverflowModeWordWrap, GTextAlignmentCenter);
+  int line_h = (int) two.h - (int) one.h;
+  if (line_h < 8 && one.h > 0) {
+    line_h = (int) one.h;
+  }
+  if (line_h < 8) {
+    line_h = TODO_TEXT_LINE_HEIGHT;
+  }
+  return line_h;
+}
+
+static int todo_line_count_for_segment(GFont font, int text_w, const char *text) {
+  if (text[0] == '\0') {
+    return 0;
+  }
+
+  GSize wide = graphics_text_layout_get_content_size(
+      text, font, GRect(0, 0, 9999, 64), GTextOverflowModeWordWrap, GTextAlignmentCenter);
+  int lines = 1;
+  if (wide.w > 0) {
+    lines = (wide.w + text_w - 1) / text_w;
+  }
+  if (lines < 1) {
+    lines = 1;
+  }
+  return lines;
+}
+
+static int todo_lines_needed(GFont font, int text_w, int line_h, const char *text, int max_lines) {
+  int lines = 0;
+  const char *segment = text;
+
+  while (segment && *segment) {
+    const char *newline = strchr(segment, '\n');
+    char chunk[TODO_MAX_LEN + 1];
+
+    if (newline) {
+      size_t len = (size_t) (newline - segment);
+      if (len >= sizeof(chunk)) {
+        len = sizeof(chunk) - 1;
+      }
+      memcpy(chunk, segment, len);
+      chunk[len] = '\0';
+    } else {
+      snprintf(chunk, sizeof(chunk), "%s", segment);
+    }
+
+    lines += todo_line_count_for_segment(font, text_w, chunk);
+    if (!newline) {
+      break;
+    }
+    segment = newline + 1;
+  }
+
+  if (lines < 1) {
+    lines = 1;
+  }
+  if (lines > max_lines) {
+    lines = max_lines;
+  }
+  return lines;
+}
+
+static void prepare_todo_display(GFont font, int text_w, int max_h) {
+  GRect layout_box = GRect(0, 0, text_w, max_h);
+  GSize full_size = graphics_text_layout_get_content_size(
+      s_todo_text, font, layout_box, GTextOverflowModeWordWrap, GTextAlignmentCenter);
+  if (full_size.h <= max_h) {
+    snprintf(s_todo_display, sizeof(s_todo_display), "%s", s_todo_text);
+    return;
+  }
+
+  int lo = 0;
+  int hi = (int) strlen(s_todo_text);
+  while (lo < hi) {
+    int mid = (lo + hi + 1) / 2;
+    snprintf(s_todo_display, sizeof(s_todo_display), "%.*s...", mid, s_todo_text);
+    GSize size = graphics_text_layout_get_content_size(
+        s_todo_display, font, layout_box, GTextOverflowModeWordWrap, GTextAlignmentCenter);
+    if (size.h <= max_h) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  snprintf(s_todo_display, sizeof(s_todo_display), "%.*s...", lo, s_todo_text);
+}
+
 static void draw_todo_footer(GContext *ctx, GRect bounds) {
   if (s_todo_text[0] == '\0') {
     return;
   }
 
-  int bar_x = s_layout.inner.origin.x + s_layout.todo_margin;
-  int bar_w = s_layout.inner.size.w - s_layout.todo_margin * 2;
+  int bar_x = s_layout.todo_margin;
+  int bar_w = bounds.size.w - s_layout.todo_margin * 2;
   GRect bar = GRect(bar_x, s_layout.todo_y, bar_w, s_layout.todo_height);
-  graphics_context_set_fill_color(ctx, s_theme.todo_bar);
-  graphics_fill_rect(ctx, bar, 4, GCornersAll);
 
-  int icon_cy = bar.origin.y + (bar.size.h / 2);
-  if (s_footer_kind == 2) {
-    graphics_context_set_fill_color(ctx, s_theme.text_secondary);
-    graphics_fill_circle(ctx, GPoint(bar.origin.x + 14, icon_cy), 4);
-  } else {
-    GRect checkbox = GRect(bar.origin.x + 14, icon_cy - 5, 10, 10);
-    graphics_context_set_stroke_color(ctx, s_theme.text_secondary);
-    graphics_context_set_stroke_width(ctx, 1);
-    graphics_draw_rect(ctx, checkbox);
-  }
+  graphics_context_set_compositing_mode(ctx, GCompOpAssign);
+  graphics_context_set_fill_color(ctx, s_theme.todo_pill);
+  graphics_fill_rect(ctx, bar, TODO_CORNER_RADIUS, GCornersAll);
 
-  graphics_context_set_text_color(ctx, s_theme.text_secondary);
+  graphics_context_set_text_color(ctx, s_theme.todo_pill_ink);
   GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
-  GRect text_box = GRect(bar.origin.x + 28, bar.origin.y + 2,
-                         bar.size.w - 32, bar.size.h - 4);
-  graphics_draw_text(ctx, s_todo_text, font, text_box,
-                     GTextOverflowModeWordWrap, GTextAlignmentLeft, false);
+  int text_w = bar.size.w - TODO_TEXT_PAD_X * 2;
+  int line_h = todo_text_line_height(font, text_w);
+  int max_text_h = TODO_TEXT_MAX_LINES * line_h;
+  prepare_todo_display(font, text_w, max_text_h);
+
+  int line_count = todo_lines_needed(
+      font, text_w, line_h, s_todo_display, TODO_TEXT_MAX_LINES);
+  int draw_h = line_count * line_h;
+  int text_y = bar.origin.y + (bar.size.h - draw_h) / 2;
+  GRect text_box = GRect(bar.origin.x + TODO_TEXT_PAD_X, text_y, text_w, draw_h);
+  graphics_draw_text(ctx, s_todo_display, font, text_box,
+                     GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 }
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
@@ -391,10 +525,16 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, s_theme.bg);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
-  draw_tick_ring(ctx);
-  draw_inner_frame(ctx);
   draw_habits(ctx);
+  draw_date_splash(ctx, bounds);
+  draw_hour_ticks(ctx);
   draw_todo_footer(ctx, bounds);
+
+  time_t now = time(NULL);
+  struct tm *tick_time = localtime(&now);
+  if (tick_time) {
+    draw_clock_hands(ctx, tick_time);
+  }
 }
 
 static void update_date(void) {
@@ -402,15 +542,11 @@ static void update_date(void) {
   struct tm *tick_time = localtime(&now);
   if (!tick_time) return;
 
-  s_current_minute = tick_time->tm_min;
-  s_current_hour_tick = ((tick_time->tm_hour % 12) * 5) % 60;
-
   static char weekday_buffer[8];
-  static char day_buffer[12];
   strftime(weekday_buffer, sizeof(weekday_buffer), "%a", tick_time);
-  strftime(day_buffer, sizeof(day_buffer), "%b %d", tick_time);
-  text_layer_set_text(s_date_weekday_layer, weekday_buffer);
-  text_layer_set_text(s_date_day_layer, day_buffer);
+  strftime(s_date_month, sizeof(s_date_month), "%b", tick_time);
+  snprintf(s_date_dayline, sizeof(s_date_dayline), "%s %d",
+           weekday_buffer, tick_time->tm_mday);
 }
 
 static void request_hey_data(void) {
@@ -492,7 +628,7 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
   Tuple *icons_tuple = dict_find(iterator, MESSAGE_KEY_HABIT_ICONS);
   Tuple *colors_tuple = dict_find(iterator, MESSAGE_KEY_HABIT_COLORS);
   Tuple *todo_tuple = dict_find(iterator, MESSAGE_KEY_TODO_TEXT);
-  Tuple *footer_kind_tuple = dict_find(iterator, MESSAGE_KEY_FOOTER_KIND);
+  Tuple *todo_color_tuple = dict_find(iterator, MESSAGE_KEY_TODO_COLOR);
   Tuple *status_tuple = dict_find(iterator, MESSAGE_KEY_SYNC_STATUS);
   Tuple *theme_tuple = dict_find(iterator, MESSAGE_KEY_THEME_MODE);
 
@@ -544,10 +680,10 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     }
   }
 
-  if (footer_kind_tuple) {
-    uint8_t kind = footer_kind_tuple->value->uint8;
-    if (kind != s_footer_kind) {
-      s_footer_kind = kind;
+  if (todo_color_tuple) {
+    const char *color = todo_color_tuple->value->cstring;
+    if (strcmp(color, s_todo_color) != 0) {
+      snprintf(s_todo_color, sizeof(s_todo_color), "%s", color);
       changed = true;
     }
   }
@@ -571,21 +707,7 @@ static void window_load(Window *window) {
   layer_set_update_proc(s_canvas_layer, canvas_update_proc);
   layer_add_child(window_layer, s_canvas_layer);
 
-  int weekday_y = s_layout.date_center_y - 22;
-  s_date_weekday_layer = text_layer_create(GRect(0, weekday_y, bounds.size.w, 24));
-  text_layer_set_background_color(s_date_weekday_layer, GColorClear);
-  text_layer_set_text_color(s_date_weekday_layer, s_theme.ink);
-  text_layer_set_font(s_date_weekday_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
-  text_layer_set_text_alignment(s_date_weekday_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_date_weekday_layer));
-
-  int day_y = s_layout.date_center_y - 2;
-  s_date_day_layer = text_layer_create(GRect(0, day_y, bounds.size.w, 20));
-  text_layer_set_background_color(s_date_day_layer, GColorClear);
-  text_layer_set_text_color(s_date_day_layer, s_theme.text_secondary);
-  text_layer_set_font(s_date_day_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-  text_layer_set_text_alignment(s_date_day_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_date_day_layer));
+  s_date_splash_bitmap = gbitmap_create_with_resource(RESOURCE_ID_DATE_SPLASH);
 
   update_date();
 }
@@ -596,9 +718,11 @@ static void window_unload(Window *window) {
     s_refresh_timer = NULL;
   }
   clear_habit_icon_cache();
+  if (s_date_splash_bitmap) {
+    gbitmap_destroy(s_date_splash_bitmap);
+    s_date_splash_bitmap = NULL;
+  }
   layer_destroy(s_canvas_layer);
-  text_layer_destroy(s_date_weekday_layer);
-  text_layer_destroy(s_date_day_layer);
 }
 
 static void init(void) {
@@ -612,7 +736,7 @@ static void init(void) {
   window_stack_push(s_window, true);
 
   app_message_register_inbox_received(inbox_received_callback);
-  app_message_open(2048, 256);
+  app_message_open(2048, 1024);
 
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
 

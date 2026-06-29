@@ -10,13 +10,14 @@ Your Hey calendar on your wrist — habits, todos, and events
 A read-only Pebble watchface that mirrors your **Hey** calendar — today's habits, rotating todos, and upcoming events, styled with Hey's official colors and icons.
 
 **Features:**
-- Up to 4 habit chips in a 2×2 grid with official Hey icons and colors
-- Filled chip when complete, outlined ring when not — same size either way
-- Light and dark themes matching Hey's palettes
-- Rotating todo footer, next calendar event, or hidden
-- Minute/hour tick ring with Hey blue and purple accents
+- Up to 4 habit chips in screen corners with official Hey icons and colors
+- Filled chip when complete, colored ring when not — same size either way
+- Circular analog clock with Hey blue/purple hands and brand-colored ticks
+- Single-line date above the clock; tinted todo/event pill below (no checkbox)
+- Light and dark themes with warm off-white and Hey dark palettes
+- Rotating todo footer tinted by Hey color, next calendar event, or hidden
 - Optional sync of Hey calendar events to the Pebble Timeline
-- Pin specific habits to quadrants via settings
+- Pin specific habits to corner quadrants via settings
 
 Requires a Hey account and personal access token from [hey-cli](https://github.com/basecamp/hey-cli). Habits are completed in the Hey app on your phone; this watchface displays them only.
 
@@ -32,6 +33,14 @@ hey, habits, calendar, todos, productivity, 37signals, basecamp, emery, pebble t
 Hey habits on your wrist
 
 ## Version History
+
+### v1.0.7
+- Redesign: corner habit quadrants, circular analog clock, single-line date
+- Colorful Hey palette: brand hands/ticks, colored habit rings, warm light background
+- Todo footer: tinted pill by Hey color, no checkbox (read-only)
+
+### v1.0.6
+- Fix: pinned habit slots stay in labeled quadrants instead of collapsing to first positions
 
 ### v1.0.5
 - Fix: dark mode, footer mode, and timeline toggle now read/write Clay clay-settings correctly
@@ -67,7 +76,7 @@ Report issues in the repository where you obtained this watchface.
 
 ## Screenshots
 
-1. `emery_screenshot.png` — Light theme with habit grid and todo footer
+1. `emery_screenshot.png` — Light theme with corner habits, analog clock, tinted todo footer
 
 ## App Information
 - **Author**: Kyle Dellis

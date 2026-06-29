@@ -91,33 +91,33 @@ Paste the access token, click **Save**. Live Hey data appears within ~30 seconds
 
 ## What the watchface shows
 
-### Habits (center grid)
+### Habits (corner quadrants)
 
-- Up to **4** habit chips in a 2×2 grid around the date
+- Up to **4** habit chips in the **screen corners** (outside the clock ring)
 - Official Hey icons (20×20 PNGs) and colors on 32px chips
 - **Complete:** filled circle in habit color, contrasting icon
-- **Incomplete:** 2px outline ring, dark icon on light / light icon on dark
-- Only habits **scheduled for today** (Hey `days` field: Mon=0 … Sun=6)
+- **Incomplete:** 2px ring in the habit's own color (not gray)
+- Only habits **scheduled for today** — matched to Hey's today `recordings.json` (not re-filtered from the cached catalog `days` field)
 - Completed habits remain visible (catalog persisted across syncs)
 
 | Habits scheduled today | Layout |
 |------------------------|--------|
-| 0 | Empty grid; date and footer still show |
-| 1–3 | Top-left → top-right → bottom-left |
-| 4 | Full 2×2 grid |
+| 0 | Empty corners; date, clock, and footer still show |
+| 1–4 | Pinned to quadrants via settings, or auto-filled TL → TR → BL → BR |
 | 5+ | First 4 after slot prefs, then Hey order |
 
-### Date and time ring
+### Date and clock
 
-- Two-line date (weekday + month/day) centered between chips
-- Tick ring: current minute in Hey blue, current hour in Hey purple
+- Single-line date (`Fri Jun 26`) above the clock hub
+- Circular analog clock: purple hour hand, blue minute hand, brand-colored quarter ticks
+- Warm off-white background in light mode; Hey dark blue-gray in dark mode
 
-### Footer (bottom bar)
+### Footer (below clock)
 
 | Footer setting | Behavior |
 |----------------|----------|
-| **Todos (rotate)** | Incomplete todos for **today** cycle every sync (~30s); wraps to two lines when needed |
-| **Next calendar event** | Next upcoming Hey event (today through +6 days), e.g. `2:30p Team standup` |
+| **Todos (rotate)** | Incomplete todos for **today** cycle every sync (~30s); soft tinted pill in the todo's Hey color (no checkbox) |
+| **Next calendar event** | Next upcoming Hey event in a gold-tinted pill, e.g. `2:30p Team standup` |
 | **Nothing** | Footer hidden |
 
 ### Pebble Timeline (opt-in)
@@ -212,7 +212,7 @@ pebble publish --non-interactive --description "Hey habits, todos, and calendar 
 | Wrong habits showing | Check habit slot names; only today's scheduled habits appear |
 | Habits vanish when all complete | Update to latest pkjs — catalog cache keeps all 4 slots filled |
 | Timeline empty | Enable toggle in settings; timeline token may require install via Rebble/Pebble app |
-| Footer overlaps ticks | Rebuild latest version — footer is anchored above tick clearance |
+| Footer overlaps habits | Rebuild latest version — footer sits below the clock ring |
 
 ---
 

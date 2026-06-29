@@ -1,7 +1,7 @@
 {
   "name": "hey-watchface",
   "author": "Kyle Dellis",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "keywords": [
     "pebble-app"
   ],
@@ -31,6 +31,7 @@
       "HABIT_ICONS",
       "HABIT_COLORS",
       "TODO_TEXT",
+      "TODO_COLOR",
       "FOOTER_KIND",
       "SYNC_STATUS",
       "THEME_MODE",
@@ -39,6 +40,11 @@
     ],
     "resources": {
       "media": [
+        {
+          "type": "png",
+          "name": "DATE_SPLASH",
+          "file": "images/date_splash.png"
+        },
         {
           "type": "png",
           "name": "HABIT_ICON_ART",
