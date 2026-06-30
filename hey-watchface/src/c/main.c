@@ -20,6 +20,7 @@
 #define TODO_TEXT_MAX_LINES 3
 #define TODO_TEXT_LINE_HEIGHT 16
 #define TODO_TEXT_PAD_X 8
+#define TODO_TEXT_PAD_Y 4
 
 #define TICK_LEN_HOUR 7
 #define TICK_LEN_QUARTER 12
@@ -413,58 +414,6 @@ static int todo_text_line_height(GFont font, int text_w) {
   return line_h;
 }
 
-static int todo_line_count_for_segment(GFont font, int text_w, const char *text) {
-  if (text[0] == '\0') {
-    return 0;
-  }
-
-  GSize wide = graphics_text_layout_get_content_size(
-      text, font, GRect(0, 0, 9999, 64), GTextOverflowModeWordWrap, GTextAlignmentCenter);
-  int lines = 1;
-  if (wide.w > 0) {
-    lines = (wide.w + text_w - 1) / text_w;
-  }
-  if (lines < 1) {
-    lines = 1;
-  }
-  return lines;
-}
-
-static int todo_lines_needed(GFont font, int text_w, int line_h, const char *text, int max_lines) {
-  int lines = 0;
-  const char *segment = text;
-
-  while (segment && *segment) {
-    const char *newline = strchr(segment, '\n');
-    char chunk[TODO_MAX_LEN + 1];
-
-    if (newline) {
-      size_t len = (size_t) (newline - segment);
-      if (len >= sizeof(chunk)) {
-        len = sizeof(chunk) - 1;
-      }
-      memcpy(chunk, segment, len);
-      chunk[len] = '\0';
-    } else {
-      snprintf(chunk, sizeof(chunk), "%s", segment);
-    }
-
-    lines += todo_line_count_for_segment(font, text_w, chunk);
-    if (!newline) {
-      break;
-    }
-    segment = newline + 1;
-  }
-
-  if (lines < 1) {
-    lines = 1;
-  }
-  if (lines > max_lines) {
-    lines = max_lines;
-  }
-  return lines;
-}
-
 static void prepare_todo_display(GFont font, int text_w, int max_h) {
   GRect layout_box = GRect(0, 0, text_w, max_h);
   GSize full_size = graphics_text_layout_get_content_size(
@@ -508,12 +457,19 @@ static void draw_todo_footer(GContext *ctx, GRect bounds) {
   GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
   int text_w = bar.size.w - TODO_TEXT_PAD_X * 2;
   int line_h = todo_text_line_height(font, text_w);
-  int max_text_h = TODO_TEXT_MAX_LINES * line_h;
+  int max_text_h = bar.size.h - TODO_TEXT_PAD_Y * 2;
+  if (max_text_h > TODO_TEXT_MAX_LINES * line_h) {
+    max_text_h = TODO_TEXT_MAX_LINES * line_h;
+  }
   prepare_todo_display(font, text_w, max_text_h);
 
-  int line_count = todo_lines_needed(
-      font, text_w, line_h, s_todo_display, TODO_TEXT_MAX_LINES);
-  int draw_h = line_count * line_h;
+  GSize text_size = graphics_text_layout_get_content_size(
+      s_todo_display, font, GRect(0, 0, text_w, max_text_h),
+      GTextOverflowModeWordWrap, GTextAlignmentCenter);
+  int draw_h = (int) text_size.h;
+  if (draw_h > max_text_h) {
+    draw_h = max_text_h;
+  }
   int text_y = bar.origin.y + (bar.size.h - draw_h) / 2;
   GRect text_box = GRect(bar.origin.x + TODO_TEXT_PAD_X, text_y, text_w, draw_h);
   graphics_draw_text(ctx, s_todo_display, font, text_box,

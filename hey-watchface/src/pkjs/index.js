@@ -1,3 +1,25 @@
+// STPyV8 (pypkjs emulator) fatally OOMs loading ICU for Intl/toLocaleString.
+(function shimStpyv8UnsafeIntl() {
+  if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+    var FakeDTF = function() {
+      return {
+        format: function() { return ''; },
+        formatToParts: function() { return []; },
+        resolvedOptions: function() { return {}; }
+      };
+    };
+    FakeDTF.supportedLocalesOf = function() { return []; };
+    Intl.DateTimeFormat = FakeDTF;
+  }
+  if (typeof Date !== 'undefined' && Date.prototype) {
+    Date.prototype.toLocaleString = function() {
+      return isNaN(this.getTime()) ? 'Invalid Date' : String(this.getTime());
+    };
+    Date.prototype.toLocaleDateString = function() { return ''; };
+    Date.prototype.toLocaleTimeString = function() { return ''; };
+  }
+})();
+
 var Clay = require('@rebble/clay');
 var clayConfig = require('./config');
 var clay = new Clay(clayConfig);
@@ -11,6 +33,8 @@ var HABIT_CATALOG_KEY = 'HeyHabitCatalog';
 var TODO_FOOTER_TEXT_MAX = 80;
 var todoRotateIndex = 0;
 var s_fetchId = 0;
+var s_lastQueryDate = '';
+var HEY_DEFAULT_TIME_ZONE = 'America/Chicago';
 
 var settings = {
   accessToken: '',
@@ -86,6 +110,10 @@ function persistPreferenceSettings(config) {
   if (config.HabitSlot4 !== undefined) {
     claySettings.HabitSlot4 = config.HabitSlot4 || '';
     localStorage.setItem('HabitSlot4', claySettings.HabitSlot4);
+  }
+  if (config.EventCalendars !== undefined) {
+    claySettings.EventCalendars = config.EventCalendars || '';
+    localStorage.setItem('EventCalendars', claySettings.EventCalendars);
   }
 
   writeClaySettings(claySettings);
@@ -303,6 +331,9 @@ function apiGet(path, fetchId, callback) {
 }
 
 function todayString() {
+  if (s_lastQueryDate) {
+    return s_lastQueryDate;
+  }
   var now = new Date();
   var month = ('0' + (now.getMonth() + 1)).slice(-2);
   var day = ('0' + now.getDate()).slice(-2);
@@ -332,6 +363,10 @@ function footerContentMode() {
 
 function syncTimelineEnabled() {
   return isSettingEnabled(readClaySetting('SyncTimeline', false));
+}
+
+function needsEventData() {
+  return footerContentMode() === 'event' || syncTimelineEnabled();
 }
 
 function isSameDayAs(isoString, dateString) {
@@ -371,7 +406,7 @@ function unwrapCalendars(payload) {
   return calendars;
 }
 
-function findPersonalCalendarId(calendarsPayload) {
+function findHabitsCalendarId(calendarsPayload) {
   var calendars = unwrapCalendars(calendarsPayload);
   var i;
   for (i = 0; i < calendars.length; i++) {
@@ -385,6 +420,121 @@ function findPersonalCalendarId(calendarsPayload) {
     }
   }
   return null;
+}
+
+function parseEventCalendarFilter(filterStr) {
+  if (!filterStr || !String(filterStr).trim()) {
+    return null;
+  }
+  var parts = String(filterStr).split(',');
+  var ids = [];
+  var names = [];
+  var i;
+  for (i = 0; i < parts.length; i++) {
+    var part = parts[i].trim();
+    if (!part) {
+      continue;
+    }
+    if (/^\d+$/.test(part)) {
+      ids.push(parseInt(part, 10));
+    } else {
+      names.push(part.toLowerCase());
+    }
+  }
+  return { ids: ids, names: names };
+}
+
+function resolveEventCalendarIds(calendarsPayload) {
+  var calendars = unwrapCalendars(calendarsPayload);
+  var filter = parseEventCalendarFilter(readClaySetting('EventCalendars', ''));
+  var result = [];
+  var i;
+  var j;
+
+  if (!filter || (filter.ids.length === 0 && filter.names.length === 0)) {
+    for (i = 0; i < calendars.length; i++) {
+      if (calendars[i].id) {
+        result.push(calendars[i].id);
+      }
+    }
+    return result;
+  }
+
+  for (i = 0; i < calendars.length; i++) {
+    var cal = calendars[i];
+    if (!cal.id) {
+      continue;
+    }
+    if (filter.ids.indexOf(cal.id) !== -1) {
+      result.push(cal.id);
+      continue;
+    }
+    if (cal.name) {
+      var calName = cal.name.toLowerCase();
+      for (j = 0; j < filter.names.length; j++) {
+        if (calName.indexOf(filter.names[j]) !== -1 ||
+            filter.names[j].indexOf(calName) !== -1) {
+          result.push(cal.id);
+          break;
+        }
+      }
+    }
+  }
+  return result;
+}
+
+function mergeEventRecordings(payloads) {
+  var seen = {};
+  var merged = [];
+  var i;
+  var j;
+  for (i = 0; i < payloads.length; i++) {
+    var events = collectCalendarEvents(payloads[i]);
+    for (j = 0; j < events.length; j++) {
+      var ev = events[j];
+      if (!ev.id || seen[ev.id]) {
+        continue;
+      }
+      seen[ev.id] = true;
+      merged.push(ev);
+    }
+  }
+  return { 'Calendar::Event': merged };
+}
+
+function fetchRecordingsBatch(calendarIds, query, fetchId, callback) {
+  var results = [];
+  var index = 0;
+
+  function fetchNext() {
+    if (index >= calendarIds.length) {
+      callback(null, results);
+      return;
+    }
+    var calendarId = calendarIds[index];
+    index++;
+    apiGet('/calendars/' + calendarId + '/recordings.json' + query, fetchId,
+      function(err, status, responseText) {
+        if (fetchId !== s_fetchId) {
+          return;
+        }
+        if (!err && status >= 200 && status < 300) {
+          try {
+            results.push({
+              calendarId: calendarId,
+              payload: JSON.parse(responseText)
+            });
+          } catch (e) {
+            console.log('recordings JSON parse failed for calendar ' + calendarId);
+          }
+        } else {
+          console.log('recordings HTTP ' + status + ' for calendar ' + calendarId);
+        }
+        fetchNext();
+      });
+  }
+
+  fetchNext();
 }
 
 function unwrapRecordings(payload) {
@@ -860,9 +1010,54 @@ function parseIsoDate(isoString) {
   return date;
 }
 
-function formatEventTime(date) {
-  var hours = date.getHours();
-  var minutes = date.getMinutes();
+var ZONE_OFFSET_RULES = {
+  'America/New_York': { std: -300, dst: -240 },
+  'America/Chicago': { std: -360, dst: -300 },
+  'America/Denver': { std: -420, dst: -360 },
+  'America/Los_Angeles': { std: -480, dst: -420 },
+  'America/Phoenix': { std: -420, dst: -420 },
+  'America/Anchorage': { std: -540, dst: -480 },
+  'Pacific/Honolulu': { std: -600, dst: -600 }
+};
+
+function nthWeekdayOfMonthUtc(year, monthIndex, weekday, n) {
+  var first = new Date(Date.UTC(year, monthIndex, 1));
+  var firstWeekday = first.getUTCDay();
+  return 1 + ((weekday - firstWeekday + 7) % 7) + (n - 1) * 7;
+}
+
+function usDstActiveUtc(utcMs) {
+  var d = new Date(utcMs);
+  var year = d.getUTCFullYear();
+  var dstStart = Date.UTC(year, 2, nthWeekdayOfMonthUtc(year, 2, 0, 2), 2, 0, 0);
+  var dstEnd = Date.UTC(year, 10, nthWeekdayOfMonthUtc(year, 10, 0, 1), 2, 0, 0);
+  return utcMs >= dstStart && utcMs < dstEnd;
+}
+
+function zoneOffsetMinutes(timeZone, utcMs) {
+  var rules = ZONE_OFFSET_RULES[timeZone];
+  if (!rules) {
+    console.log('Unknown timezone ' + timeZone + ', using UTC');
+    return 0;
+  }
+  if (rules.std === rules.dst) {
+    return rules.std;
+  }
+  return usDstActiveUtc(utcMs) ? rules.dst : rules.std;
+}
+
+function formatEventTimeInZone(isoString, timeZone) {
+  var date = parseIsoDate(isoString);
+  if (!date) {
+    return '';
+  }
+  var utcMs = date.getTime();
+  var tz = timeZone || HEY_DEFAULT_TIME_ZONE;
+  var offset = zoneOffsetMinutes(tz, utcMs);
+  var localMs = utcMs + offset * 60000;
+  var localDate = new Date(localMs);
+  var hours = localDate.getUTCHours();
+  var minutes = localDate.getUTCMinutes();
   var suffix = hours >= 12 ? 'p' : 'a';
   hours = hours % 12;
   if (hours === 0) {
@@ -883,11 +1078,11 @@ function formatEventLine(event, now) {
     }
     return prefix + title;
   }
-  var startsAt = parseIsoDate(event.starts_at);
-  if (!startsAt) {
+  if (!event.starts_at) {
     return title.substring(0, TODO_FOOTER_TEXT_MAX);
   }
-  var line = formatEventTime(startsAt) + ' ' + title;
+  var timeStr = formatEventTimeInZone(event.starts_at, event.starts_at_time_zone);
+  var line = timeStr + ' ' + title;
   return line.substring(0, TODO_FOOTER_TEXT_MAX);
 }
 
@@ -1125,8 +1320,11 @@ function clearAllTimelinePins(callback) {
   });
 }
 
-function syncTimelinePins(recordingsPayload, today) {
+function syncTimelinePins(recordingsPayload, today, done) {
   if (!syncTimelineEnabled()) {
+    if (done) {
+      done(0, 'disabled');
+    }
     return;
   }
 
@@ -1139,6 +1337,25 @@ function syncTimelinePins(recordingsPayload, today) {
     var pin = buildPinFromEvent(events[i]);
     pins.push(pin);
     newIds.push(pin.id);
+  }
+
+  if (pins.length === 0) {
+    Pebble.getTimelineToken(function(token) {
+      var stored = getStoredTimelinePinIds();
+      deleteTimelinePins(stored, token, function() {
+        setStoredTimelinePinIds([]);
+        console.log('Timeline synced 0 pins');
+        if (done) {
+          done(0, 'ok');
+        }
+      });
+    }, function(error) {
+      console.log('Timeline token unavailable: ' + error);
+      if (done) {
+        done(0, 'token');
+      }
+    });
+    return;
   }
 
   Pebble.getTimelineToken(function(token) {
@@ -1155,11 +1372,22 @@ function syncTimelinePins(recordingsPayload, today) {
         if (!err) {
           setStoredTimelinePinIds(newIds);
           console.log('Timeline synced ' + pins.length + ' pins');
+          if (done) {
+            done(pins.length, 'ok');
+          }
+        } else {
+          console.log('Timeline PUT failed');
+          if (done) {
+            done(0, 'error');
+          }
         }
       });
     });
   }, function(error) {
     console.log('Timeline token unavailable: ' + error);
+    if (done) {
+      done(0, 'token');
+    }
   });
 }
 
@@ -1207,6 +1435,7 @@ function fetchHeyData(queryDate) {
 
   saveSettings();
   var date = queryDate || todayString();
+  s_lastQueryDate = date;
 
   if (!settings.accessToken) {
     sendWatchPayload({
@@ -1214,7 +1443,7 @@ function fetchHeyData(queryDate) {
       'HABIT_DONE_MASK': 0,
       'HABIT_ICONS': '',
       'HABIT_COLORS': '',
-      'TODO_TEXT': 'Add Hey token in watchface settings',
+      'TODO_TEXT': 'Add Hey token\nin settings',
       'TODO_COLOR': 'blue',
       'FOOTER_KIND': 1,
       'SYNC_STATUS': 1
@@ -1239,16 +1468,59 @@ function fetchHeyData(queryDate) {
       return;
     }
 
-    var calendarId = findPersonalCalendarId(calendarsPayload);
-    if (!calendarId) {
+    var habitsCalendarId = findHabitsCalendarId(calendarsPayload);
+    if (!habitsCalendarId) {
       reportError(2, 'personal calendar not found');
       return;
     }
 
-    var todayPath = '/calendars/' + calendarId + '/recordings.json?starts_on=' +
+    var eventCalendarIds = resolveEventCalendarIds(calendarsPayload);
+    var weekQuery = '?starts_on=' + date + '&ends_on=' + addDaysString(date, 6);
+    var todayPath = '/calendars/' + habitsCalendarId + '/recordings.json?starts_on=' +
       date + '&ends_on=' + date;
-    var weekPath = '/calendars/' + calendarId + '/recordings.json?starts_on=' +
-      date + '&ends_on=' + addDaysString(date, 6);
+    var weekPath = '/calendars/' + habitsCalendarId + '/recordings.json' + weekQuery;
+
+    function completeSync(todayPayload, weekPayload, eventResults) {
+      var mergedEventsPayload = mergeEventRecordings(
+        eventResults.map(function(r) { return r.payload; })
+      );
+      var catalog = syncHabitCatalog(todayPayload, weekPayload);
+      var habits = pickHabits(catalog, todayPayload, date);
+      var footer = pickFooter(todayPayload, mergedEventsPayload, date);
+      var todoCount = collectIncompleteTodos(todayPayload).length;
+      var maskBits = '0b' + habits.mask.toString(2);
+      var now = new Date();
+      var upcomingEvents = collectUpcomingEvents(mergedEventsPayload, now, date);
+      var totalEvents = collectCalendarEvents(mergedEventsPayload).length;
+      var eventCounts = [];
+      var ci;
+      for (ci = 0; ci < eventResults.length; ci++) {
+        eventCounts.push(eventResults[ci].calendarId + '=' +
+          collectCalendarEvents(eventResults[ci].payload).length);
+      }
+
+      console.log('Hey sync ' + date + ': catalog=' + catalog.length +
+        ' todayHabits=' + habits.todayHabitsCount +
+        ' scheduled=' + habits.scheduledCount + ' picked=' + habits.count +
+        ' mask=' + maskBits + ' [' + habits.titles.join(', ') + '], ' +
+        todoCount + ' todos, events=' + totalEvents + ' upcoming=' + upcomingEvents.length +
+        ' eventCals=[' + eventCalendarIds.join(',') + '] counts=[' + eventCounts.join(',') +
+        '], footer=' + footer.text + ', footerMode=' + footerContentMode() +
+        ', timeline=' + (syncTimelineEnabled() ? 'on' : 'off'));
+
+      sendWatchPayload({
+        'HABIT_COUNT': habits.count,
+        'HABIT_DONE_MASK': habits.mask,
+        'HABIT_ICONS': habits.icons,
+        'HABIT_COLORS': habits.colors,
+        'TODO_TEXT': footer.text.substring(0, TODO_FOOTER_TEXT_MAX),
+        'TODO_COLOR': footer.color || 'blue',
+        'FOOTER_KIND': footer.kind,
+        'SYNC_STATUS': 0
+      });
+
+      syncTimelinePins(mergedEventsPayload, date);
+    }
 
     apiGet(todayPath, fetchId, function(err2, status2, todayText) {
       if (fetchId !== s_fetchId) {
@@ -1280,31 +1552,17 @@ function fetchHeyData(queryDate) {
           }
         }
 
-        var catalog = syncHabitCatalog(todayPayload, weekPayload);
-        var habits = pickHabits(catalog, todayPayload, date);
-        var footer = pickFooter(todayPayload, weekPayload, date);
-        var todoCount = collectIncompleteTodos(todayPayload).length;
-        var maskBits = '0b' + habits.mask.toString(2);
+        if (!needsEventData() || eventCalendarIds.length === 0) {
+          completeSync(todayPayload, weekPayload, []);
+          return;
+        }
 
-        console.log('Hey sync ' + date + ': catalog=' + catalog.length +
-          ' todayHabits=' + habits.todayHabitsCount +
-          ' scheduled=' + habits.scheduledCount + ' picked=' + habits.count +
-          ' mask=' + maskBits + ' [' + habits.titles.join(', ') + '], ' +
-          todoCount + ' todos, footer=' + footer.text + ', mode=' +
-          footerContentMode());
-
-        sendWatchPayload({
-          'HABIT_COUNT': habits.count,
-          'HABIT_DONE_MASK': habits.mask,
-          'HABIT_ICONS': habits.icons,
-          'HABIT_COLORS': habits.colors,
-          'TODO_TEXT': footer.text.substring(0, TODO_FOOTER_TEXT_MAX),
-          'TODO_COLOR': footer.color || 'blue',
-          'FOOTER_KIND': footer.kind,
-          'SYNC_STATUS': 0
+        fetchRecordingsBatch(eventCalendarIds, weekQuery, fetchId, function(err4, eventResults) {
+          if (fetchId !== s_fetchId) {
+            return;
+          }
+          completeSync(todayPayload, weekPayload, eventResults || []);
         });
-
-        syncTimelinePins(weekPayload, date);
       });
     });
   });

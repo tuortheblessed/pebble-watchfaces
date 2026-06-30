@@ -84,6 +84,7 @@ Paste the access token, click **Save**. Live Hey data appears within ~30 seconds
 | **Token Endpoint** | Optional. From `hey auth status --json` |
 | **Appearance** | Light or dark; uses Hey's official color palettes |
 | **Footer shows** | Bottom bar: rotating todos (default), next calendar event, or hidden |
+| **Event calendars** | Optional filter for footer/Timeline events — comma-separated Hey calendar names or IDs. Blank = all calendars |
 | **Sync Hey events to Pebble Timeline** | Off by default. Pushes Hey calendar events to the Pebble Timeline |
 | **Habit slots 1–4** | Pin habits by name to quadrants (top-left, top-right, bottom-left, bottom-right) |
 
@@ -117,16 +118,23 @@ Paste the access token, click **Save**. Live Hey data appears within ~30 seconds
 | Footer setting | Behavior |
 |----------------|----------|
 | **Todos (rotate)** | Incomplete todos for **today** cycle every sync (~30s); soft tinted pill in the todo's Hey color (no checkbox) |
-| **Next calendar event** | Next upcoming Hey event in a gold-tinted pill, e.g. `2:30p Team standup` |
+| **Next calendar event** | Next upcoming Hey event in a gold-tinted pill, e.g. `4:45p Little Ninjas`. Times use each event's Hey timezone (not your phone's local time) |
 | **Nothing** | Footer hidden |
+
+### Calendar events (footer and Timeline)
+
+Hey stores habits/todos on your **personal** calendar and calendar events on separate calendars (e.g. "Personal HEY", "Family"). v1.0.8 fetches events from all Hey calendars (or only those listed in **Event calendars**) while habits still sync from the personal calendar only.
+
+Event times in the footer match the Hey app: a Family event in `America/Chicago` shows `4:45p`, not the time converted to your phone's timezone.
 
 ### Pebble Timeline (opt-in)
 
 When **Sync Hey events to Pebble Timeline** is enabled:
 
-- Hey `Calendar::Event` items become Timeline pins on your watch
+- Hey `Calendar::Event` items from all (or filtered) event calendars become Timeline pins on your watch
 - View them in the **system Timeline** (scroll with Up/Down) — not on the watchface canvas
 - Syncs on each refresh; turning the toggle off removes synced pins
+- **Requires a real phone** with Rebble/Pebble app — Timeline PUT does not work in the QEMU emulator
 
 ---
 
@@ -138,6 +146,7 @@ Watch  ←AppMessage→  Phone (pkjs)  ←HTTPS→  app.hey.com
 
 - Watch requests data every **30 seconds**
 - Token and API calls run on the **phone** (or emulator), not on the watch
+- Habits/todos: personal Hey calendar only. Events/Timeline: all calendars (or **Event calendars** filter)
 - `SYNC_STATUS` on the watch: `0` = OK, `1` = auth error, `2` = other error
 - Habit catalog is cached in phone localStorage so completed habits are not dropped when Hey omits them from today's recording payload
 
@@ -211,7 +220,9 @@ pebble publish --non-interactive --description "Hey habits, todos, and calendar 
 | Auth error / habits empty | Token expired — add refresh token + endpoint, or run `hey auth login` again |
 | Wrong habits showing | Check habit slot names; only today's scheduled habits appear |
 | Habits vanish when all complete | Update to latest pkjs — catalog cache keeps all 4 slots filled |
-| Timeline empty | Enable toggle in settings; timeline token may require install via Rebble/Pebble app |
+| Footer empty in "Next calendar event" mode | Events live on separate Hey calendars — update to v1.0.8+; optionally set **Event calendars** |
+| Event time wrong vs Hey app | Footer uses event timezone (US zones supported); unknown zones fall back to UTC |
+| Timeline empty | Enable toggle in settings; install via Rebble/Pebble app on a **real phone** (not emulator); Timeline must be enabled for app UUID `32fc2d81-66e4-45ee-8589-2350312ed88c` in Rebble dev portal if PUT fails |
 | Footer overlaps habits | Rebuild latest version — footer sits below the clock ring |
 
 ---

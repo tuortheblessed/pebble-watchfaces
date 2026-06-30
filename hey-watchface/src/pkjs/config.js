@@ -109,6 +109,17 @@ module.exports = [
     "description": "Pushes Hey calendar events to the Pebble Timeline (scroll with Up/Down). Uses extra phone network on each sync."
   },
   {
+    "type": "input",
+    "messageKey": "EventCalendars",
+    "label": "Event calendars (optional)",
+    "defaultValue": "",
+    "attributes": {
+      "placeholder": "Personal HEY, Family — or 799729, 826241",
+      "limit": 128
+    },
+    "description": "Comma-separated calendar names or IDs. Leave blank to include all Hey calendars for events and Timeline."
+  },
+  {
     "type": "heading",
     "defaultValue": "Habit slots"
   },
