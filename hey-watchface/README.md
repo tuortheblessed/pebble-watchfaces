@@ -18,7 +18,7 @@ After installing from the Pebble app store:
 4. On your **phone**, open this watchface's **Settings** (long-press the watchface → Settings).
 5. Paste the code into **Access Token**, tap **Save**.
 
-Your habits appear on the watch within ~30 seconds. Complete habits in the Hey app on your phone — this watchface only displays them.
+Your habits appear on the watch within about a minute. Complete habits in the Hey app on your phone — this watchface only displays them.
 
 ---
 
@@ -67,7 +67,7 @@ pebble install --emulator emery
 pebble emu-app-config --emulator emery
 ```
 
-Paste the access token, click **Save**. Live Hey data appears within ~30 seconds.
+Paste the access token, click **Save**. Live Hey data appears within about a minute.
 
 **On a phone:** Long-press the watchface → **Settings**.
 
@@ -117,8 +117,8 @@ Paste the access token, click **Save**. Live Hey data appears within ~30 seconds
 
 | Footer setting | Behavior |
 |----------------|----------|
-| **Todos (rotate)** | Incomplete todos for **today** cycle every sync (~30s); soft tinted pill in the todo's Hey color (no checkbox) |
-| **Next calendar event** | Next upcoming Hey event in a gold-tinted pill, e.g. `4:45p Little Ninjas`. Times use each event's Hey timezone (not your phone's local time) |
+| **Todos (rotate)** | Incomplete todos for **today** cycle every sync (~60s); soft lavender pill (theme color) |
+| **Next calendar event** | Next upcoming Hey event in the same lavender pill, e.g. `4:45p Little Ninjas`. Times use each event's Hey timezone (not your phone's local time) |
 | **Nothing** | Footer hidden |
 
 ### Calendar events (footer and Timeline)
@@ -134,6 +134,7 @@ When **Sync Hey events to Pebble Timeline** is enabled:
 - Hey `Calendar::Event` items from all (or filtered) event calendars become Timeline pins on your watch
 - View them in the **system Timeline** (scroll with Up/Down) — not on the watchface canvas
 - Syncs on each refresh; turning the toggle off removes synced pins
+- Timeline pin uploads run every 3rd sync to reduce phone network use
 - **Requires a real phone** with Rebble/Pebble app — Timeline PUT does not work in the QEMU emulator
 
 ---
@@ -144,7 +145,7 @@ When **Sync Hey events to Pebble Timeline** is enabled:
 Watch  ←AppMessage→  Phone (pkjs)  ←HTTPS→  app.hey.com
 ```
 
-- Watch requests data every **30 seconds**
+- Watch requests data every **60 seconds** (aligned with the minute tick)
 - Token and API calls run on the **phone** (or emulator), not on the watch
 - Habits/todos: personal Hey calendar only. Events/Timeline: all calendars (or **Event calendars** filter)
 - `SYNC_STATUS` on the watch: `0` = OK, `1` = auth error, `2` = other error

@@ -29,11 +29,16 @@ var TIMELINE_API_BASE = 'https://timeline-api.getpebble.com/v1/user/pins/';
 var MAX_HABITS = 4;
 var MAX_TIMELINE_PINS = 30;
 var TIMELINE_PIN_IDS_KEY = 'HeyTimelinePinIds';
+var TIMELINE_PIN_HASH_KEY = 'HeyTimelinePinHashes';
+var CALENDAR_CACHE_KEY = 'HeyCalendarCache';
 var HABIT_CATALOG_KEY = 'HeyHabitCatalog';
 var TODO_FOOTER_TEXT_MAX = 80;
+var TIMELINE_SYNC_INTERVAL = 3;
 var todoRotateIndex = 0;
 var s_fetchId = 0;
-var s_lastQueryDate = '';
+var s_timelineSyncCounter = 0;
+var s_consecutiveErrors = 0;
+var s_syncBackoffUntil = 0;
 var HEY_DEFAULT_TIME_ZONE = 'America/Chicago';
 
 var settings = {
@@ -114,6 +119,7 @@ function persistPreferenceSettings(config) {
   if (config.EventCalendars !== undefined) {
     claySettings.EventCalendars = config.EventCalendars || '';
     localStorage.setItem('EventCalendars', claySettings.EventCalendars);
+    invalidateCalendarCache();
   }
 
   writeClaySettings(claySettings);
@@ -224,6 +230,8 @@ function clearHeyCredentials() {
   localStorage.removeItem('HeyTokenEndpoint');
   localStorage.removeItem(HABIT_CATALOG_KEY);
   localStorage.removeItem(TIMELINE_PIN_IDS_KEY);
+  localStorage.removeItem(TIMELINE_PIN_HASH_KEY);
+  invalidateCalendarCache();
 
   var claySettings = readClaySettings();
   delete claySettings.HeyAccessToken;
@@ -253,7 +261,7 @@ function saveHeyTokenSettings(config) {
   }
 
   if (accessProvided && newAccess !== previousAccess) {
-    // New access token invalidates any saved refresh credentials.
+    invalidateCalendarCache();
     syncAuthStorage(newAccess, '', '');
     return;
   }
@@ -331,13 +339,98 @@ function apiGet(path, fetchId, callback) {
 }
 
 function todayString() {
-  if (s_lastQueryDate) {
-    return s_lastQueryDate;
-  }
   var now = new Date();
   var month = ('0' + (now.getMonth() + 1)).slice(-2);
   var day = ('0' + now.getDate()).slice(-2);
   return now.getFullYear() + '-' + month + '-' + day;
+}
+
+function invalidateCalendarCache() {
+  localStorage.removeItem(CALENDAR_CACHE_KEY);
+}
+
+function loadCalendarCache() {
+  try {
+    var raw = localStorage.getItem(CALENDAR_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveCalendarCache(data) {
+  localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify(data));
+}
+
+function filterEventCalendarIds(eventIds, habitsCalendarId) {
+  var result = [];
+  var i;
+  for (i = 0; i < eventIds.length; i++) {
+    if (eventIds[i] !== habitsCalendarId) {
+      result.push(eventIds[i]);
+    }
+  }
+  return result;
+}
+
+function settingsChangeNeedsSync(config) {
+  var keys = [
+    'HeyAccessToken', 'HeyRefreshToken', 'HeyTokenEndpoint', 'DisconnectHey',
+    'FooterContent', 'SyncTimeline', 'EventCalendars',
+    'HabitSlot1', 'HabitSlot2', 'HabitSlot3', 'HabitSlot4'
+  ];
+  var i;
+  for (i = 0; i < keys.length; i++) {
+    if (config[keys[i]] !== undefined) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function fetchCalendars(fetchId, callback) {
+  var filter = readClaySetting('EventCalendars', '');
+  var cached = loadCalendarCache();
+  if (cached && cached.eventCalendarsFilter === filter && cached.habitsCalendarId) {
+    callback(null, cached.habitsCalendarId, cached.eventCalendarIds || []);
+    return;
+  }
+
+  apiGet('/calendars.json', fetchId, function(err, status, responseText) {
+    if (fetchId !== s_fetchId) {
+      return;
+    }
+    if (err || status < 200 || status >= 300) {
+      callback(err || new Error('calendars HTTP ' + status), null, null);
+      return;
+    }
+
+    var calendarsPayload;
+    try {
+      calendarsPayload = JSON.parse(responseText);
+    } catch (e) {
+      callback(new Error('calendars JSON parse'), null, null);
+      return;
+    }
+
+    var habitsCalendarId = findHabitsCalendarId(calendarsPayload);
+    if (!habitsCalendarId) {
+      callback(new Error('personal calendar not found'), null, null);
+      return;
+    }
+
+    var eventCalendarIds = filterEventCalendarIds(
+      resolveEventCalendarIds(calendarsPayload), habitsCalendarId);
+    saveCalendarCache({
+      habitsCalendarId: habitsCalendarId,
+      eventCalendarIds: eventCalendarIds,
+      eventCalendarsFilter: filter
+    });
+    callback(null, habitsCalendarId, eventCalendarIds);
+  });
 }
 
 function addDaysString(dateString, days) {
@@ -624,12 +717,6 @@ function habitMatchesSlot(habit, slotName) {
   if (title === slot || title.indexOf(slot) !== -1 || slot.indexOf(title) !== -1) {
     return true;
   }
-  if ((slot.indexOf('fitness') !== -1 || slot.indexOf('kettlebell') !== -1 ||
-       slot.indexOf('weight') !== -1) &&
-      (title.indexOf('fitness') !== -1 || title.indexOf('kettlebell') !== -1 ||
-       title.indexOf('weight') !== -1)) {
-    return true;
-  }
   return false;
 }
 
@@ -832,9 +919,13 @@ function habitsForToday(catalogList, todayPayload, queryDate) {
   }
 
   if (scheduled.length === 0) {
-    return scheduledHabitsFromList(catalogList, queryDate);
+    scheduled = scheduledHabitsFromList(catalogList, queryDate);
   }
-  return scheduled;
+  return {
+    scheduled: scheduled,
+    todayHabitsCount: todayHabits.length,
+    doneMap: doneMap
+  };
 }
 
 function habitIconSlug(habit) {
@@ -848,9 +939,9 @@ function habitIconSlug(habit) {
 }
 
 function pickHabits(catalog, todayPayload, queryDate) {
-  var todayHabits = extractHabitsFromPayload(todayPayload);
-  var scheduled = habitsForToday(catalog, todayPayload, queryDate);
-  var doneMap = habitCompletionMap(todayPayload, queryDate);
+  var todayData = habitsForToday(catalog, todayPayload, queryDate);
+  var scheduled = todayData.scheduled;
+  var doneMap = todayData.doneMap;
   var slots = getHabitSlotNames();
   var hasPinnedSlots = false;
   var picked = [];
@@ -932,7 +1023,7 @@ function pickHabits(catalog, todayPayload, queryDate) {
     colors: colors.join('|'),
     mask: mask,
     titles: titles,
-    todayHabitsCount: todayHabits.length,
+    todayHabitsCount: todayData.todayHabitsCount,
     scheduledCount: scheduled.length
   };
 }
@@ -1069,7 +1160,7 @@ function formatEventTimeInZone(isoString, timeZone) {
   return hours + ':' + ('0' + minutes).slice(-2) + suffix;
 }
 
-function formatEventLine(event, now) {
+function formatEventLine(event) {
   var title = (event.title || 'Event').trim();
   if (event.all_day) {
     var prefix = 'All day ';
@@ -1133,29 +1224,53 @@ function collectUpcomingEvents(recordingsPayload, now, today) {
   return upcoming;
 }
 
-function pickNextEvent(recordingsPayload, today) {
-  var now = new Date();
-  var upcoming = collectUpcomingEvents(recordingsPayload, now, today);
-  if (upcoming.length === 0) {
+function pickNextEventFromList(upcomingEvents) {
+  if (upcomingEvents.length === 0) {
     return '';
   }
-  return formatEventLine(upcoming[0], now);
+  return formatEventLine(upcomingEvents[0]);
 }
 
-function pickFooter(todayRecordings, weekRecordings, today) {
-  var mode = footerContentMode();
+function pickTodoFromList(todos) {
+  if (todos.length === 0) {
+    todoRotateIndex = 0;
+    return { text: '', color: 'blue' };
+  }
+  if (todoRotateIndex >= todos.length) {
+    todoRotateIndex = 0;
+  }
+  var todo = todos[todoRotateIndex];
+  todoRotateIndex = (todoRotateIndex + 1) % todos.length;
+  return { text: todo.title, color: todo.color };
+}
+
+function pickFooterFromPrecomputed(mode, todos, upcomingEvents) {
   if (mode === 'off') {
     return { text: '', color: 'blue', kind: 0 };
   }
   if (mode === 'event') {
     return {
-      text: pickNextEvent(weekRecordings, today),
-      color: 'gold',
+      text: pickNextEventFromList(upcomingEvents),
+      color: 'blue',
       kind: 2
     };
   }
-  var todo = pickTodo(todayRecordings);
+  var todo = pickTodoFromList(todos);
   return { text: todo.text, color: todo.color, kind: 1 };
+}
+
+function pickNextEvent(recordingsPayload, today) {
+  var now = new Date();
+  var upcoming = collectUpcomingEvents(recordingsPayload, now, today);
+  return pickNextEventFromList(upcoming);
+}
+
+function pickFooter(todayRecordings, weekRecordings, today) {
+  var mode = footerContentMode();
+  var now = new Date();
+  var todos = collectIncompleteTodos(todayRecordings);
+  var upcoming = collectUpcomingEvents(weekRecordings, now, today);
+  return pickFooterFromPrecomputed(mode, todos, upcoming);
 }
 
 function pickTodo(recordingsPayload) {
@@ -1207,6 +1322,27 @@ function getStoredTimelinePinIds() {
 
 function setStoredTimelinePinIds(ids) {
   localStorage.setItem(TIMELINE_PIN_IDS_KEY, JSON.stringify(ids));
+}
+
+function getStoredTimelinePinHashes() {
+  try {
+    var raw = localStorage.getItem(TIMELINE_PIN_HASH_KEY);
+    if (!raw) {
+      return {};
+    }
+    var parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function setStoredTimelinePinHashes(hashes) {
+  localStorage.setItem(TIMELINE_PIN_HASH_KEY, JSON.stringify(hashes));
+}
+
+function pinPayloadSignature(pin) {
+  return JSON.stringify(pin);
 }
 
 function timelinePinIdForEvent(event) {
@@ -1312,15 +1448,17 @@ function clearAllTimelinePins(callback) {
   Pebble.getTimelineToken(function(token) {
     deleteTimelinePins(stored, token, function() {
       setStoredTimelinePinIds([]);
+      setStoredTimelinePinHashes({});
       callback(null);
     });
   }, function() {
     setStoredTimelinePinIds([]);
+    setStoredTimelinePinHashes({});
     callback(new Error('timeline token unavailable'));
   });
 }
 
-function syncTimelinePins(recordingsPayload, today, done) {
+function syncTimelinePins(upcomingEvents, today, done) {
   if (!syncTimelineEnabled()) {
     if (done) {
       done(0, 'disabled');
@@ -1328,15 +1466,31 @@ function syncTimelinePins(recordingsPayload, today, done) {
     return;
   }
 
-  var now = new Date();
-  var events = collectUpcomingEvents(recordingsPayload, now, today).slice(0, MAX_TIMELINE_PINS);
+  s_timelineSyncCounter += 1;
+  if (s_timelineSyncCounter % TIMELINE_SYNC_INTERVAL !== 0) {
+    console.log('Timeline sync skipped (interval)');
+    if (done) {
+      done(0, 'skipped');
+    }
+    return;
+  }
+
+  var events = upcomingEvents.slice(0, MAX_TIMELINE_PINS);
   var pins = [];
   var newIds = [];
+  var pinsToPut = [];
+  var newHashes = {};
+  var storedHashes = getStoredTimelinePinHashes();
   var i;
   for (i = 0; i < events.length; i++) {
     var pin = buildPinFromEvent(events[i]);
+    var signature = pinPayloadSignature(pin);
     pins.push(pin);
     newIds.push(pin.id);
+    newHashes[pin.id] = signature;
+    if (storedHashes[pin.id] !== signature) {
+      pinsToPut.push(pin);
+    }
   }
 
   if (pins.length === 0) {
@@ -1344,6 +1498,7 @@ function syncTimelinePins(recordingsPayload, today, done) {
       var stored = getStoredTimelinePinIds();
       deleteTimelinePins(stored, token, function() {
         setStoredTimelinePinIds([]);
+        setStoredTimelinePinHashes({});
         console.log('Timeline synced 0 pins');
         if (done) {
           done(0, 'ok');
@@ -1368,10 +1523,11 @@ function syncTimelinePins(recordingsPayload, today, done) {
     }
 
     deleteTimelinePins(toDelete, token, function() {
-      putTimelinePins(pins, token, function(err) {
+      putTimelinePins(pinsToPut, token, function(err) {
         if (!err) {
           setStoredTimelinePinIds(newIds);
-          console.log('Timeline synced ' + pins.length + ' pins');
+          setStoredTimelinePinHashes(newHashes);
+          console.log('Timeline synced ' + pins.length + ' pins (' + pinsToPut.length + ' PUT)');
           if (done) {
             done(pins.length, 'ok');
           }
@@ -1430,12 +1586,19 @@ function fetchHeyData(queryDate) {
     if (fetchId !== s_fetchId) {
       return;
     }
+    s_consecutiveErrors += 1;
+    if (s_consecutiveErrors >= 3) {
+      s_syncBackoffUntil = Date.now() + (5 * 60 * 1000);
+    }
     sendError(status, reason);
   }
 
-  saveSettings();
+  if (Date.now() < s_syncBackoffUntil) {
+    console.log('Hey sync skipped (backoff)');
+    return;
+  }
+
   var date = queryDate || todayString();
-  s_lastQueryDate = date;
 
   if (!settings.accessToken) {
     sendWatchPayload({
@@ -1451,46 +1614,36 @@ function fetchHeyData(queryDate) {
     return;
   }
 
-  apiGet('/calendars.json', fetchId, function(err, status, responseText) {
+  fetchCalendars(fetchId, function(err, habitsCalendarId, eventCalendarIds) {
     if (fetchId !== s_fetchId) {
       return;
     }
-    if (err || status < 200 || status >= 300) {
-      reportError(status === 401 ? 1 : 2, 'calendars HTTP ' + status);
+    if (err || !habitsCalendarId) {
+      var msg = err && err.message ? err.message : 'calendars failed';
+      if (msg.indexOf('401') !== -1) {
+        reportError(1, msg);
+      } else if (msg.indexOf('not found') !== -1) {
+        reportError(2, msg);
+      } else {
+        reportError(2, msg);
+      }
       return;
     }
 
-    var calendarsPayload;
-    try {
-      calendarsPayload = JSON.parse(responseText);
-    } catch (e) {
-      reportError(2, 'calendars JSON parse');
-      return;
-    }
-
-    var habitsCalendarId = findHabitsCalendarId(calendarsPayload);
-    if (!habitsCalendarId) {
-      reportError(2, 'personal calendar not found');
-      return;
-    }
-
-    var eventCalendarIds = resolveEventCalendarIds(calendarsPayload);
     var weekQuery = '?starts_on=' + date + '&ends_on=' + addDaysString(date, 6);
-    var todayPath = '/calendars/' + habitsCalendarId + '/recordings.json?starts_on=' +
-      date + '&ends_on=' + date;
     var weekPath = '/calendars/' + habitsCalendarId + '/recordings.json' + weekQuery;
 
-    function completeSync(todayPayload, weekPayload, eventResults) {
+    function completeSync(habitsPayload, eventResults) {
       var mergedEventsPayload = mergeEventRecordings(
         eventResults.map(function(r) { return r.payload; })
       );
-      var catalog = syncHabitCatalog(todayPayload, weekPayload);
-      var habits = pickHabits(catalog, todayPayload, date);
-      var footer = pickFooter(todayPayload, mergedEventsPayload, date);
-      var todoCount = collectIncompleteTodos(todayPayload).length;
-      var maskBits = '0b' + habits.mask.toString(2);
+      var catalog = syncHabitCatalog(habitsPayload, habitsPayload);
+      var habits = pickHabits(catalog, habitsPayload, date);
       var now = new Date();
+      var todos = collectIncompleteTodos(habitsPayload);
       var upcomingEvents = collectUpcomingEvents(mergedEventsPayload, now, date);
+      var footer = pickFooterFromPrecomputed(footerContentMode(), todos, upcomingEvents);
+      var maskBits = '0b' + habits.mask.toString(2);
       var totalEvents = collectCalendarEvents(mergedEventsPayload).length;
       var eventCounts = [];
       var ci;
@@ -1499,11 +1652,14 @@ function fetchHeyData(queryDate) {
           collectCalendarEvents(eventResults[ci].payload).length);
       }
 
+      s_consecutiveErrors = 0;
+      s_syncBackoffUntil = 0;
+
       console.log('Hey sync ' + date + ': catalog=' + catalog.length +
         ' todayHabits=' + habits.todayHabitsCount +
         ' scheduled=' + habits.scheduledCount + ' picked=' + habits.count +
         ' mask=' + maskBits + ' [' + habits.titles.join(', ') + '], ' +
-        todoCount + ' todos, events=' + totalEvents + ' upcoming=' + upcomingEvents.length +
+        todos.length + ' todos, events=' + totalEvents + ' upcoming=' + upcomingEvents.length +
         ' eventCals=[' + eventCalendarIds.join(',') + '] counts=[' + eventCounts.join(',') +
         '], footer=' + footer.text + ', footerMode=' + footerContentMode() +
         ', timeline=' + (syncTimelineEnabled() ? 'on' : 'off'));
@@ -1519,10 +1675,10 @@ function fetchHeyData(queryDate) {
         'SYNC_STATUS': 0
       });
 
-      syncTimelinePins(mergedEventsPayload, date);
+      syncTimelinePins(upcomingEvents, date);
     }
 
-    apiGet(todayPath, fetchId, function(err2, status2, todayText) {
+    apiGet(weekPath, fetchId, function(err2, status2, weekText) {
       if (fetchId !== s_fetchId) {
         return;
       }
@@ -1531,38 +1687,24 @@ function fetchHeyData(queryDate) {
         return;
       }
 
-      var todayPayload;
+      var habitsPayload;
       try {
-        todayPayload = JSON.parse(todayText);
+        habitsPayload = JSON.parse(weekText);
       } catch (e2) {
         reportError(2, 'recordings JSON parse');
         return;
       }
 
-      apiGet(weekPath, fetchId, function(err3, status3, weekText) {
+      if (!needsEventData() || eventCalendarIds.length === 0) {
+        completeSync(habitsPayload, []);
+        return;
+      }
+
+      fetchRecordingsBatch(eventCalendarIds, weekQuery, fetchId, function(err4, eventResults) {
         if (fetchId !== s_fetchId) {
           return;
         }
-        var weekPayload = todayPayload;
-        if (!err3 && status3 >= 200 && status3 < 300) {
-          try {
-            weekPayload = JSON.parse(weekText);
-          } catch (e3) {
-            weekPayload = todayPayload;
-          }
-        }
-
-        if (!needsEventData() || eventCalendarIds.length === 0) {
-          completeSync(todayPayload, weekPayload, []);
-          return;
-        }
-
-        fetchRecordingsBatch(eventCalendarIds, weekQuery, fetchId, function(err4, eventResults) {
-          if (fetchId !== s_fetchId) {
-            return;
-          }
-          completeSync(todayPayload, weekPayload, eventResults || []);
-        });
+        completeSync(habitsPayload, eventResults || []);
       });
     });
   });
@@ -1570,9 +1712,8 @@ function fetchHeyData(queryDate) {
 
 Pebble.addEventListener('ready', function() {
   console.log('Hey pkjs ready');
-  pushThemeToWatch(function() {
-    fetchHeyData();
-  });
+  saveSettings();
+  fetchHeyData();
 });
 
 Pebble.addEventListener('appmessage', function(e) {
@@ -1586,9 +1727,11 @@ Pebble.addEventListener('webviewclosed', function(e) {
     return;
   }
   var config = JSON.parse(decodeURIComponent(e.response));
+  var needsSync = settingsChangeNeedsSync(config);
   if (isSettingEnabled(config.DisconnectHey)) {
     clearHeyCredentials();
     persistPreferenceSettings(config);
+    saveSettings();
     pushThemeToWatch(function() {
       fetchHeyData();
     });
@@ -1597,7 +1740,11 @@ Pebble.addEventListener('webviewclosed', function(e) {
   saveHeyTokenSettings(config);
   var wasTimelineEnabled = syncTimelineEnabled();
   persistPreferenceSettings(config);
+  saveSettings();
   pushThemeToWatch(function() {
+    if (!needsSync) {
+      return;
+    }
     if (config.SyncTimeline !== undefined) {
       var enableTimeline = isSettingEnabled(config.SyncTimeline);
       if (wasTimelineEnabled && !enableTimeline) {

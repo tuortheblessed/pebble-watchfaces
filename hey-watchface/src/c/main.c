@@ -5,7 +5,6 @@
 #define ICON_SLUG_LEN 16
 #define COLOR_SLUG_LEN 12
 #define TODO_MAX_LEN 80
-#define REFRESH_INTERVAL_MS 30000
 
 #define HABIT_CORNER_INSET 8
 #define EDGE_INSET 12
@@ -15,7 +14,6 @@
 #define TODO_FOOTER_HEIGHT 52
 #define TODO_TICK_GAP 11
 #define TODO_HABIT_GAP 4
-#define TODO_SIDE_EXTRA 0
 #define TODO_CORNER_RADIUS (TODO_FOOTER_HEIGHT / 2)
 #define TODO_TEXT_MAX_LINES 3
 #define TODO_TEXT_LINE_HEIGHT 16
@@ -33,11 +31,9 @@
 typedef struct {
   GColor bg;
   GColor ink;
-  GColor text_secondary;
   GColor date_splash;
   GColor date_splash_ink;
   GColor todo_pill;
-  GColor todo_pill_border;
   GColor todo_pill_ink;
   GColor tick_normal;
   GColor tick_blue;
@@ -74,11 +70,15 @@ static char s_habit_colors[MAX_HABITS][COLOR_SLUG_LEN];
 static char s_todo_text[TODO_MAX_LEN + 1];
 static char s_todo_display[TODO_MAX_LEN + 8];
 static char s_todo_color[COLOR_SLUG_LEN] = "blue";
+static uint8_t s_footer_kind = 0;
 static uint8_t s_sync_status = 0;
 static uint8_t s_theme_mode = 0;
 static HeyTheme s_theme;
 
-static AppTimer *s_refresh_timer = NULL;
+static GFont s_todo_font;
+static int s_todo_text_w;
+static int s_todo_draw_h;
+static bool s_todo_layout_valid;
 
 typedef struct {
   GBitmap *bitmap;
@@ -95,11 +95,9 @@ static void apply_theme(uint8_t mode) {
     s_theme = (HeyTheme) {
       .bg = HEY_RGB(27, 39, 51),
       .ink = HEY_RGB(236, 233, 230),
-      .text_secondary = HEY_RGB(155, 153, 152),
       .date_splash = HEY_RGB(255, 155, 88),
       .date_splash_ink = HEY_RGB(35, 28, 51),
       .todo_pill = HEY_RGB(58, 58, 64),
-      .todo_pill_border = HEY_RGB(88, 88, 96),
       .todo_pill_ink = HEY_RGB(236, 233, 230),
       .tick_normal = HEY_RGB(80, 88, 98),
       .tick_blue = HEY_RGB(80, 162, 255),
@@ -113,11 +111,9 @@ static void apply_theme(uint8_t mode) {
     s_theme = (HeyTheme) {
       .bg = HEY_RGB(250, 248, 245),
       .ink = HEY_RGB(35, 28, 51),
-      .text_secondary = HEY_RGB(116, 116, 128),
       .date_splash = HEY_RGB(255, 138, 50),
       .date_splash_ink = HEY_RGB(255, 255, 255),
       .todo_pill = HEY_RGB(168, 168, 255),
-      .todo_pill_border = HEY_RGB(168, 168, 255),
       .todo_pill_ink = HEY_RGB(35, 28, 51),
       .tick_normal = HEY_RGB(170, 170, 178),
       .tick_blue = HEY_RGB(0, 116, 228),
@@ -162,7 +158,7 @@ static void compute_layout(GRect bounds) {
   s_layout.habit_corners[2] = GPoint(habit_corner, bounds.size.h - habit_corner);
   s_layout.habit_corners[3] = GPoint(bounds.size.w - habit_corner, bounds.size.h - habit_corner);
   s_layout.todo_height = TODO_FOOTER_HEIGHT;
-  s_layout.todo_margin = habit_corner + HABIT_CHIP_RADIUS + TODO_HABIT_GAP + TODO_SIDE_EXTRA;
+  s_layout.todo_margin = habit_corner + HABIT_CHIP_RADIUS + TODO_HABIT_GAP;
 
   int tick_inner_top = s_layout.clock_center.y - s_layout.clock_radius + TICK_LEN_QUARTER;
   int date_mid_y = (s_layout.clock_center.y + tick_inner_top) / 2;
@@ -367,7 +363,7 @@ static void draw_habit_glyph(GContext *ctx, int slot, GPoint center, bool done,
 }
 
 static void draw_habits(GContext *ctx) {
-  for (int i = 0; i < MAX_HABITS; i++) {
+  for (int i = 0; i < s_habit_count && i < MAX_HABITS; i++) {
     if (s_habit_icons[i][0] == '\0') {
       continue;
     }
@@ -440,8 +436,32 @@ static void prepare_todo_display(GFont font, int text_w, int max_h) {
   snprintf(s_todo_display, sizeof(s_todo_display), "%.*s...", lo, s_todo_text);
 }
 
+static void rebuild_todo_layout(int bar_w) {
+  s_todo_text_w = bar_w - TODO_TEXT_PAD_X * 2;
+  if (s_todo_text[0] == '\0' || s_todo_text_w <= 0) {
+    s_todo_layout_valid = false;
+    return;
+  }
+
+  int line_h = todo_text_line_height(s_todo_font, s_todo_text_w);
+  int max_text_h = s_layout.todo_height - TODO_TEXT_PAD_Y * 2;
+  if (max_text_h > TODO_TEXT_MAX_LINES * line_h) {
+    max_text_h = TODO_TEXT_MAX_LINES * line_h;
+  }
+  prepare_todo_display(s_todo_font, s_todo_text_w, max_text_h);
+
+  GSize text_size = graphics_text_layout_get_content_size(
+      s_todo_display, s_todo_font, GRect(0, 0, s_todo_text_w, max_text_h),
+      GTextOverflowModeWordWrap, GTextAlignmentCenter);
+  s_todo_draw_h = (int) text_size.h;
+  if (s_todo_draw_h > max_text_h) {
+    s_todo_draw_h = max_text_h;
+  }
+  s_todo_layout_valid = true;
+}
+
 static void draw_todo_footer(GContext *ctx, GRect bounds) {
-  if (s_todo_text[0] == '\0') {
+  if (s_todo_text[0] == '\0' || !s_todo_layout_valid) {
     return;
   }
 
@@ -454,25 +474,9 @@ static void draw_todo_footer(GContext *ctx, GRect bounds) {
   graphics_fill_rect(ctx, bar, TODO_CORNER_RADIUS, GCornersAll);
 
   graphics_context_set_text_color(ctx, s_theme.todo_pill_ink);
-  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
-  int text_w = bar.size.w - TODO_TEXT_PAD_X * 2;
-  int line_h = todo_text_line_height(font, text_w);
-  int max_text_h = bar.size.h - TODO_TEXT_PAD_Y * 2;
-  if (max_text_h > TODO_TEXT_MAX_LINES * line_h) {
-    max_text_h = TODO_TEXT_MAX_LINES * line_h;
-  }
-  prepare_todo_display(font, text_w, max_text_h);
-
-  GSize text_size = graphics_text_layout_get_content_size(
-      s_todo_display, font, GRect(0, 0, text_w, max_text_h),
-      GTextOverflowModeWordWrap, GTextAlignmentCenter);
-  int draw_h = (int) text_size.h;
-  if (draw_h > max_text_h) {
-    draw_h = max_text_h;
-  }
-  int text_y = bar.origin.y + (bar.size.h - draw_h) / 2;
-  GRect text_box = GRect(bar.origin.x + TODO_TEXT_PAD_X, text_y, text_w, draw_h);
-  graphics_draw_text(ctx, s_todo_display, font, text_box,
+  int text_y = bar.origin.y + (bar.size.h - s_todo_draw_h) / 2;
+  GRect text_box = GRect(bar.origin.x + TODO_TEXT_PAD_X, text_y, s_todo_text_w, s_todo_draw_h);
+  graphics_draw_text(ctx, s_todo_display, s_todo_font, text_box,
                      GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 }
 
@@ -524,18 +528,6 @@ static void request_hey_data(void) {
   app_message_outbox_send();
 }
 
-static void refresh_timer_callback(void *data) {
-  request_hey_data();
-  s_refresh_timer = app_timer_register(REFRESH_INTERVAL_MS, refresh_timer_callback, NULL);
-}
-
-static void schedule_refresh_timer(void) {
-  if (s_refresh_timer) {
-    app_timer_cancel(s_refresh_timer);
-  }
-  s_refresh_timer = app_timer_register(REFRESH_INTERVAL_MS, refresh_timer_callback, NULL);
-}
-
 static void parse_pipe_field(char *dest, int dest_len, const char *src, int index) {
   dest[0] = '\0';
   if (!src || src[0] == '\0') return;
@@ -585,25 +577,26 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
   Tuple *colors_tuple = dict_find(iterator, MESSAGE_KEY_HABIT_COLORS);
   Tuple *todo_tuple = dict_find(iterator, MESSAGE_KEY_TODO_TEXT);
   Tuple *todo_color_tuple = dict_find(iterator, MESSAGE_KEY_TODO_COLOR);
+  Tuple *footer_kind_tuple = dict_find(iterator, MESSAGE_KEY_FOOTER_KIND);
   Tuple *status_tuple = dict_find(iterator, MESSAGE_KEY_SYNC_STATUS);
   Tuple *theme_tuple = dict_find(iterator, MESSAGE_KEY_THEME_MODE);
 
   bool changed = false;
+  bool footer_changed = false;
+  bool clear_icons = false;
 
   if (theme_tuple) {
     uint8_t mode = theme_tuple->value->uint8 ? 1 : 0;
     if (mode != s_theme_mode) {
       apply_theme(mode);
-      clear_habit_icon_cache();
+      clear_icons = true;
+      footer_changed = true;
       changed = true;
     }
   }
 
   if (status_tuple) {
-    if (s_sync_status != status_tuple->value->uint8) {
-      s_sync_status = status_tuple->value->uint8;
-      changed = true;
-    }
+    s_sync_status = status_tuple->value->uint8;
   }
 
   if (count_tuple) {
@@ -612,8 +605,8 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     const char *icons = icons_tuple ? icons_tuple->value->cstring : "";
     const char *colors = colors_tuple ? colors_tuple->value->cstring : "";
 
-    if (habit_data_changed(count, mask, icons, colors) || count != s_habit_count) {
-      clear_habit_icon_cache();
+    if (habit_data_changed(count, mask, icons, colors)) {
+      clear_icons = true;
       s_habit_count = count;
       s_habit_done_mask = mask;
       for (int i = 0; i < MAX_HABITS; i++) {
@@ -628,10 +621,15 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     }
   }
 
+  if (clear_icons) {
+    clear_habit_icon_cache();
+  }
+
   if (todo_tuple) {
     const char *todo = todo_tuple->value->cstring;
     if (strcmp(todo, s_todo_text) != 0) {
       snprintf(s_todo_text, sizeof(s_todo_text), "%s", todo);
+      footer_changed = true;
       changed = true;
     }
   }
@@ -640,8 +638,19 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     const char *color = todo_color_tuple->value->cstring;
     if (strcmp(color, s_todo_color) != 0) {
       snprintf(s_todo_color, sizeof(s_todo_color), "%s", color);
-      changed = true;
     }
+  }
+
+  if (footer_kind_tuple) {
+    uint8_t kind = footer_kind_tuple->value->uint8;
+    if (kind != s_footer_kind) {
+      s_footer_kind = kind;
+    }
+  }
+
+  if (footer_changed && s_canvas_layer) {
+    int bar_w = layer_get_bounds(s_canvas_layer).size.w - s_layout.todo_margin * 2;
+    rebuild_todo_layout(bar_w);
   }
 
   if (changed) {
@@ -650,8 +659,13 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
 }
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
-  update_date();
-  layer_mark_dirty(s_canvas_layer);
+  if (units_changed & DAY_UNIT) {
+    update_date();
+    layer_mark_dirty(s_canvas_layer);
+  } else if (units_changed & MINUTE_UNIT) {
+    request_hey_data();
+    layer_mark_dirty(s_canvas_layer);
+  }
 }
 
 static void window_load(Window *window) {
@@ -659,6 +673,7 @@ static void window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer);
   compute_layout(bounds);
 
+  s_todo_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
   s_canvas_layer = layer_create(bounds);
   layer_set_update_proc(s_canvas_layer, canvas_update_proc);
   layer_add_child(window_layer, s_canvas_layer);
@@ -666,19 +681,26 @@ static void window_load(Window *window) {
   s_date_splash_bitmap = gbitmap_create_with_resource(RESOURCE_ID_DATE_SPLASH);
 
   update_date();
+  rebuild_todo_layout(bounds.size.w - s_layout.todo_margin * 2);
 }
 
 static void window_unload(Window *window) {
-  if (s_refresh_timer) {
-    app_timer_cancel(s_refresh_timer);
-    s_refresh_timer = NULL;
-  }
   clear_habit_icon_cache();
   if (s_date_splash_bitmap) {
     gbitmap_destroy(s_date_splash_bitmap);
     s_date_splash_bitmap = NULL;
   }
   layer_destroy(s_canvas_layer);
+}
+
+static void outbox_failed_callback(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
+  (void) iterator;
+  (void) context;
+}
+
+static void inbox_dropped_callback(AppMessageResult reason, void *context) {
+  (void) reason;
+  (void) context;
 }
 
 static void init(void) {
@@ -692,12 +714,13 @@ static void init(void) {
   window_stack_push(s_window, true);
 
   app_message_register_inbox_received(inbox_received_callback);
+  app_message_register_outbox_failed(outbox_failed_callback);
+  app_message_register_inbox_dropped(inbox_dropped_callback);
   app_message_open(2048, 1024);
 
-  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
+  tick_timer_service_subscribe(MINUTE_UNIT | DAY_UNIT, tick_handler);
 
   request_hey_data();
-  schedule_refresh_timer();
 }
 
 static void deinit(void) {
